@@ -78,7 +78,7 @@ export function SiteLayout() {
       )}
       <div className="ambient-noise pointer-events-none fixed inset-0 z-[100]" aria-hidden="true" />
 
-      <header className="sticky top-0 z-50">
+      <header className={isLanding ? "fixed inset-x-0 top-0 z-50" : "sticky top-0 z-50"}>
         <div className="flex items-center justify-between px-6 py-[22px] sm:px-[46px]">
           <Link to="/" className="flex items-center" aria-label="rusty — home">
             <BrandMark />
