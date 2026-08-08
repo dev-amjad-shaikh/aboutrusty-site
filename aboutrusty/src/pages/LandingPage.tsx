@@ -1,3 +1,4 @@
+import { BrandIntro } from "@/sections/landing/hero/BrandIntro";
 import { ReelHero } from "@/sections/landing/hero/ReelHero";
 import { SignalStrip } from "@/sections/landing/hero/SignalStrip";
 import { WhyRusty } from "@/sections/landing/WhyRusty";
@@ -11,6 +12,7 @@ import { FinalCta } from "@/sections/landing/FinalCta";
 export default function LandingPage() {
   return (
     <div>
+      <BrandIntro />
       <ReelHero />
       <SignalStrip />
       <div id="runtime">
