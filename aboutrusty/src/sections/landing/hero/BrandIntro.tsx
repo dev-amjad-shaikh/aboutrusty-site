@@ -1,70 +1,153 @@
 import { HeroCanvas } from "./HeroCanvas";
 
 /**
- * Rust-in-a-box badge scaled to the hero wordmark's cap height.
- * Em-based so it tracks the clamp() font size exactly.
- */
-function HeroBadge() {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      className="h-[0.78em] w-[0.78em] shrink-0 self-center rounded-[0.13em] bg-primary p-[0.09em] fill-primary-foreground"
-    >
-      <path d="M7 6h11.5C23.7 6 27 9.1 27 13.7c0 3.2-1.6 5.6-4.2 6.8L27 27h-7l-3.1-5.4H13V27H7V6Zm6 5v5.6h4.8c2 0 3.1-1 3.1-2.8 0-1.8-1.1-2.8-3.1-2.8H13Z" />
-    </svg>
-  );
-}
-
-/**
  * Brand introduction — the first screen of the site, BEFORE the reel.
  * A pure Rusty moment: wordmark, one-line definition, scroll cue.
- * Entrance animation is a one-time staggered rise on load (CSS-only,
+ * Entrance animation is a one-time masked rise on load (CSS-only,
  * disabled under prefers-reduced-motion).
  */
 export function BrandIntro() {
   return (
     <section
       aria-label="Rusty — the durable agent runtime built in Rust"
-      className="relative flex min-h-[92svh] items-center justify-center"
+      className="relative flex min-h-screen flex-col items-center overflow-hidden"
     >
       <style>{`
-        @keyframes brand-rise {
-          from { opacity: 0; transform: translateY(26px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes rzMask {
+          from { transform: translate3d(0, 108%, 0); }
+          to { transform: translate3d(0, 0, 0); }
         }
-        @keyframes brand-cue {
-          0%, 100% { transform: scaleY(0.25); transform-origin: top; }
-          50% { transform: scaleY(1); transform-origin: top; }
+        @keyframes rzFade {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes rzScroll {
+          0% { transform: scaleY(0); transform-origin: 50% 0%; opacity: 0; }
+          12% { opacity: 1; }
+          48% { transform: scaleY(1); transform-origin: 50% 0%; opacity: 1; }
+          52% { transform: scaleY(1); transform-origin: 50% 100%; opacity: 1; }
+          92% { transform: scaleY(0); transform-origin: 50% 100%; opacity: 0; }
+          100% { transform: scaleY(0); transform-origin: 50% 100%; opacity: 0; }
         }
       `}</style>
 
       <HeroCanvas />
-      <div className="relative z-10 flex flex-col items-center px-6 text-center">
-        <h1
-          aria-label="rusty."
-          className="flex animate-[brand-rise_.8s_cubic-bezier(.22,.8,.24,1)_.12s_both] items-center justify-center gap-[0.07em] font-display text-[clamp(4.5rem,13vw,10.5rem)] font-bold leading-[.9] tracking-[-0.03em] text-foreground motion-reduce:animate-none"
-        >
-          <HeroBadge />
-          <span aria-hidden="true">
-            USTY<span className="text-primary">.</span>
-          </span>
-        </h1>
 
-        <p className="mt-8 max-w-md animate-[brand-rise_.8s_cubic-bezier(.22,.8,.24,1)_.3s_both] text-lg leading-relaxed text-muted-foreground motion-reduce:animate-none">
-          The durable agent runtime, built in Rust.
-        </p>
+      {/* Main content — centered, flex-1 pushes the scroll cue to the bottom */}
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-0 pt-[30px] text-center">
+        {/* Wordmark mask — clips the rzMask rise */}
+        <div
+          className="overflow-hidden"
+          style={{ padding: "0.12em 0.14em", margin: "0 -0.14em" }}
+        >
+          <h1
+            aria-label="rusty."
+            className="flex animate-[rzMask_1300ms_cubic-bezier(.16,1,.3,1)_220ms_both] items-center justify-center font-display text-[clamp(62px,11.5vw,232px)] font-extrabold leading-[0.8] tracking-[0.02em] motion-reduce:animate-none"
+            style={{ color: "#ECEEEA" }}
+          >
+            {/* Rust-in-a-box badge with torn edges + crumb specks */}
+            <span
+              aria-hidden="true"
+              className="relative flex"
+              style={{ width: "0.9em", height: "0.9em", marginRight: "0.09em" }}
+            >
+              <span
+                className="flex h-full w-full items-center justify-center font-display font-extrabold"
+                style={{
+                  color: "#14100e",
+                  background:
+                    "linear-gradient(148deg, #FF8049 0%, #FE6B35 44%, #DC5628 78%, #F4763F 100%)",
+                  clipPath:
+                    "polygon(11% 0%, 34% 1%, 39% 5%, 52% 2%, 58% 0%, 81% 1%, 88% 7%, 100% 3%, 100% 20%, 91% 28%, 100% 35%, 99% 57%, 93% 64%, 99% 70%, 96% 87%, 87% 100%, 64% 99%, 56% 93%, 47% 100%, 37% 92%, 25% 100%, 9% 99%, 0% 88%, 1% 70%, 7% 64%, 1% 58%, 3% 39%, 0% 32%, 1% 11%)",
+                }}
+              >
+                R
+              </span>
+              <span
+                className="absolute"
+                style={{
+                  bottom: "0.23em",
+                  left: "-0.085em",
+                  width: "0.045em",
+                  height: "0.032em",
+                  background: "#FE6B35",
+                  opacity: 0.75,
+                  transform: "rotate(-14deg)",
+                }}
+              />
+              <span
+                className="absolute"
+                style={{
+                  bottom: "-0.07em",
+                  left: "0.31em",
+                  width: "0.038em",
+                  height: "0.026em",
+                  background: "#DC5628",
+                  transform: "rotate(9deg)",
+                }}
+              />
+              <span
+                className="absolute"
+                style={{
+                  top: "-0.055em",
+                  left: "0.58em",
+                  width: "0.028em",
+                  height: "0.028em",
+                  background: "#FE6B35",
+                  opacity: 0.6,
+                  transform: "rotate(24deg)",
+                }}
+              />
+            </span>
+
+            <span aria-hidden="true">USTY</span>
+
+            {/* Torn-edge period */}
+            <span
+              aria-hidden="true"
+              className="self-end"
+              style={{
+                width: "0.12em",
+                height: "0.115em",
+                marginLeft: "0.06em",
+                marginBottom: "0.055em",
+                background: "#FE6B35",
+                clipPath:
+                  "polygon(15% 0%, 74% 5%, 100% 1%, 95% 43%, 100% 74%, 71% 100%, 33% 90%, 5% 99%, 0% 55%, 6% 24%)",
+              }}
+            />
+          </h1>
+        </div>
+
+        {/* Tagline mask */}
+        <div
+          className="mt-[26px] overflow-hidden"
+          style={{ padding: "0.2em 0 0.3em" }}
+        >
+          <p
+            className="m-0 animate-[rzMask_1100ms_cubic-bezier(.16,1,.3,1)_460ms_both] text-[clamp(16px,1.45vw,21px)] font-normal tracking-[-0.005em] motion-reduce:animate-none"
+            style={{ color: "#979d9a" }}
+          >
+            The durable agent runtime, built in Rust.
+          </p>
+        </div>
       </div>
 
-      {/* Scroll cue — hands off into the reel */}
+      {/* Scroll cue — in normal flow, sits at the bottom */}
       <div
         aria-hidden="true"
-        className="absolute bottom-9 left-1/2 flex -translate-x-1/2 animate-[brand-rise_.8s_ease_.7s_both] flex-col items-center gap-3 motion-reduce:animate-none"
+        className="relative z-10 flex animate-[rzFade_1200ms_ease-out_950ms_both] flex-col items-center gap-[13px] px-6 pb-[44px] pt-0 motion-reduce:animate-none"
       >
-        <span className="font-code text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+        <span
+          className="font-code text-[9px] uppercase tracking-[0.3em]"
+          style={{ color: "#4f5451" }}
+        >
           Scroll
         </span>
-        <span className="block h-10 w-px animate-[brand-cue_1.8s_ease-in-out_infinite] bg-primary/70 motion-reduce:animate-none" />
+        <span
+          className="block h-[34px] w-px animate-[rzScroll_2600ms_cubic-bezier(.65,0,.35,1)_infinite] motion-reduce:animate-none"
+          style={{ background: "#FE6B35", opacity: 0.85 }}
+        />
       </div>
     </section>
   );
