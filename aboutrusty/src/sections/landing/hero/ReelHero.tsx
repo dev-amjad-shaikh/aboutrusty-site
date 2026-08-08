@@ -120,13 +120,16 @@ const smoothstep = (min: number, max: number, value: number) => {
   return t * t * (3 - 2 * t);
 };
 
-/* Deliberate-transition physics for the desktop reel:
-   - CHAPTER_DWELL_MS: minimum time between chapter activations. Fast scroll
-     deltas keep accumulating in `desired`, but chapters release one at a time.
-   - CHAPTER_HYSTERESIS: eased progress must cross this far past a chapter
-     boundary before the next chapter activates, so boundaries never flicker. */
-const CHAPTER_DWELL_MS = 650;
-const CHAPTER_HYSTERESIS = 0.07;
+/* Chapter-transition physics for the desktop reel:
+   - TRANSITION_MS: every chapter change is a fixed-duration tween, so the
+     feel is identical forward and reverse — no scroll-speed-dependent lag.
+   - CHAPTER_DWELL_MS: minimum time between chapter activations. Fast
+     scroll deltas accumulate in `desired` and drain one chapter at a
+     time, so a hard flick can't skip chapters. */
+const TRANSITION_MS = 620;
+const CHAPTER_DWELL_MS = 450;
+const easeInOutCubic = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 const primaryActionClass =
   "inline-flex min-h-12 shrink-0 items-center justify-center gap-4 whitespace-nowrap rounded-lg border border-primary bg-primary px-5 text-[13px] font-bold text-primary-foreground shadow-[0_10px_36px_rgba(255,107,53,.13)] transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:bg-accent-foreground hover:shadow-[0_14px_42px_rgba(255,107,53,.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
@@ -208,10 +211,12 @@ function ReelDesktop({ reduceMotion }: { reduceMotion: boolean }) {
   const fieldRef = useRef<RuntimeFieldHandle | null>(null);
   const chapterRefs = useRef<(HTMLElement | null)[]>([]);
   const railRefs = useRef<(HTMLElement | null)[]>([]);
-  const progressRef = useRef({ target: 0, smooth: 0, ready: false });
+  const progressRef = useRef({ raw: 0, ready: false });
   const reelRef = useRef({
-    active: 0, // last chapter actually activated (±1 per release)
+    current: 0, // settled chapter
     desired: 0, // where the scroll position wants to be (accumulates fast deltas)
+    pos: 0, // continuous visual position, in chapter units
+    anim: null as { from: number; to: number; start: number } | null,
     lastActivation: Number.NEGATIVE_INFINITY, // first release is immediate
   });
   const [activePhase, setActivePhase] = useState(0);
@@ -223,25 +228,20 @@ function ReelDesktop({ reduceMotion }: { reduceMotion: boolean }) {
     const reel = reelRef.current;
     let raf = 0;
 
-    const renderFrame = (p: number) => {
-      const count = CHAPTERS.length - 1;
-      const rawPosition = p * count;
-      // While a chapter change is pending, hold the visuals at the boundary
-      // of the activated chapter — a hard flick can't run the reel past the
-      // chapter the driver has actually released.
-      const holdSpan = 0.5 + CHAPTER_HYSTERESIS;
-      const position =
-        !reduceMotion && reel.active !== reel.desired
-          ? clamp(rawPosition, reel.active - holdSpan, reel.active + holdSpan)
-          : rawPosition;
-      fieldRef.current?.setPhase(reduceMotion ? reel.active : position);
-      stickyRef.current?.style.setProperty("--reel-progress", p.toFixed(5));
+    // Render a continuous chapter position (float, in chapter units).
+    // Only compositor-friendly properties are animated: opacity + transform.
+    const renderFrame = (position: number) => {
+      fieldRef.current?.setPhase(position);
+      stickyRef.current?.style.setProperty(
+        "--reel-progress",
+        progress.raw.toFixed(5)
+      );
 
       chapterRefs.current.forEach((el, index) => {
         if (!el) return;
         const distance = index - position;
         const absolute = Math.abs(distance);
-        const active = index === reel.active;
+        const active = index === reel.current;
         const opacity = reduceMotion
           ? active
             ? 1
@@ -251,13 +251,11 @@ function ReelDesktop({ reduceMotion }: { reduceMotion: boolean }) {
         const x = reduceMotion ? 0 : distance * travel;
         const y = reduceMotion ? 0 : Math.min(absolute, 1) * 10;
         const scale = reduceMotion ? 1 : 1 - Math.min(absolute, 1) * 0.022;
-        const blur = reduceMotion ? 0 : Math.max(0, absolute - 0.14) * 2.6;
 
         el.style.setProperty("--chapter-opacity", opacity.toFixed(4));
         el.style.setProperty("--chapter-x", `${x.toFixed(2)}px`);
         el.style.setProperty("--chapter-y", `${y.toFixed(2)}px`);
         el.style.setProperty("--chapter-scale", scale.toFixed(4));
-        el.style.setProperty("--chapter-blur", `${blur.toFixed(2)}px`);
         el.style.visibility = opacity > 0.015 ? "visible" : "hidden";
         el.style.pointerEvents = active && opacity > 0.68 ? "auto" : "none";
       });
@@ -271,53 +269,75 @@ function ReelDesktop({ reduceMotion }: { reduceMotion: boolean }) {
       });
     };
 
-    // Release at most one chapter per call, and only when (a) the eased
-    // progress has crossed the hysteresis threshold into the next chapter's
-    // zone and (b) the dwell since the last activation has elapsed. Fast
-    // scroll deltas accumulate in `desired` and drain one chapter at a time.
+    // Chapter state machine. The scroll position only sets `desired`; the
+    // visuals always travel via fixed-duration tweens — start, reverse,
+    // and settle are all smooth, with at most one chapter per activation
+    // and a dwell between activations (anti-skip).
     const stepReel = () => {
       const count = CHAPTERS.length - 1;
-      const rawPosition = progress.smooth * count;
-      reel.desired = clamp(Math.round(rawPosition), 0, count);
-      if (reel.active === reel.desired) return;
-      const direction = Math.sign(reel.desired - reel.active);
-      const crossed =
-        direction > 0
-          ? rawPosition > reel.active + 0.5 + CHAPTER_HYSTERESIS
-          : rawPosition < reel.active - 0.5 - CHAPTER_HYSTERESIS;
-      const dwelled = performance.now() - reel.lastActivation >= CHAPTER_DWELL_MS;
-      if (crossed && dwelled) {
-        reel.active += direction; // clamped to ±1 chapter per release
-        reel.lastActivation = performance.now();
-        setActivePhase(reel.active);
+      const now = performance.now();
+      reel.desired = clamp(Math.round(progress.raw * count), 0, count);
+
+      if (reel.anim) {
+        const { from, to, start } = reel.anim;
+        const direction = Math.sign(to - reel.current);
+        // Reverse intent: the scroll wants to go back to (or past) the
+        // chapter we left — retarget the tween from its current position.
+        if (direction !== 0 && Math.sign(reel.desired - reel.current) !== direction) {
+          reel.anim = { from: reel.pos, to: reel.current, start: now };
+          setActivePhase(reel.current);
+          return;
+        }
+        const t = (now - start) / TRANSITION_MS;
+        if (t >= 1) {
+          reel.pos = to;
+          reel.current = to;
+          reel.anim = null;
+          reel.lastActivation = now;
+        } else {
+          reel.pos = from + (to - from) * easeInOutCubic(t);
+        }
+        return;
+      }
+
+      if (
+        reel.desired !== reel.current &&
+        now - reel.lastActivation >= CHAPTER_DWELL_MS
+      ) {
+        const direction = Math.sign(reel.desired - reel.current);
+        const next = reel.current + direction; // ±1 chapter per activation
+        reel.anim = { from: reel.pos, to: next, start: now };
+        setActivePhase(next);
       }
     };
 
     const updateFromScroll = () => {
       const start = section.offsetTop;
       const range = Math.max(1, section.offsetHeight - window.innerHeight);
-      progress.target = clamp((window.scrollY - start) / range);
+      progress.raw = clamp((window.scrollY - start) / range);
       if (!progress.ready || reduceMotion) {
-        progress.smooth = progress.target;
         progress.ready = true;
+        const count = CHAPTERS.length - 1;
+        const nearest = clamp(Math.round(progress.raw * count), 0, count);
         if (reduceMotion) {
           // Reduced-motion fallback: snap straight to the chapter, no dwell.
-          const count = CHAPTERS.length - 1;
-          const nearest = clamp(Math.round(progress.smooth * count), 0, count);
-          reel.active = nearest;
+          reel.current = nearest;
           reel.desired = nearest;
+          reel.pos = nearest;
+          reel.anim = null;
           reel.lastActivation = performance.now();
           setActivePhase(nearest);
+          renderFrame(nearest);
+        } else {
+          reel.pos = progress.raw * count;
+          renderFrame(reel.pos);
         }
-        renderFrame(progress.smooth);
       }
     };
 
     const animate = () => {
-      progress.smooth += (progress.target - progress.smooth) * 0.095;
-      if (Math.abs(progress.target - progress.smooth) < 0.00002) progress.smooth = progress.target;
       stepReel();
-      renderFrame(progress.smooth);
+      renderFrame(reel.pos);
       raf = window.requestAnimationFrame(animate);
     };
 
@@ -401,10 +421,9 @@ function ReelDesktop({ reduceMotion }: { reduceMotion: boolean }) {
                     "--chapter-x": index === 0 ? "0px" : "72px",
                     "--chapter-y": index === 0 ? "0px" : "24px",
                     "--chapter-scale": index === 0 ? "1" : ".975",
-                    "--chapter-blur": index === 0 ? "0px" : "7px",
                   } as CSSProperties
                 }
-                className={`absolute bottom-[105px] left-[max(2.5rem,calc((100vw-1200px)/2))] w-[min(570px,46vw)] opacity-[var(--chapter-opacity,0)] [filter:blur(var(--chapter-blur,7px))] [transform:translate3d(var(--chapter-x,72px),var(--chapter-y,24px),0)_scale(var(--chapter-scale,.975))] [transform-origin:left_bottom] [will-change:opacity,transform,filter] ${
+                className={`absolute bottom-[105px] left-[max(2.5rem,calc((100vw-1200px)/2))] w-[min(570px,46vw)] opacity-[var(--chapter-opacity,0)] [transform:translate3d(var(--chapter-x,72px),var(--chapter-y,24px),0)_scale(var(--chapter-scale,.975))] [transform-origin:left_bottom] [will-change:opacity,transform] ${
                   index === 0 ? "visible" : "invisible"
                 } ${index === 0 ? "pointer-events-auto" : "pointer-events-none"}`}
               >
