@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { Github } from "lucide-react";
 
 const navItems = [
@@ -63,11 +63,19 @@ export function BrandMark({ size = 34 }: { size?: number }) {
  * Routed pages render in <Outlet />.
  */
 export function SiteLayout() {
+  const { pathname } = useLocation();
+  // Landing hero paints its own grid + glow + grain via HeroCanvas —
+  // suppress the legacy ambient chrome there so the layers don't double up.
+  const isLanding = pathname === "/";
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Ambient chrome — ink grid + film grain + rust glow */}
-      <div className="ambient-grid pointer-events-none absolute inset-x-0 top-0 h-[920px]" aria-hidden="true" />
-      <div className="pointer-events-none absolute -top-[300px] right-0 h-[min(600px,100vw)] w-[min(600px,100vw)] rounded-full bg-primary opacity-[0.08] blur-[150px]" aria-hidden="true" />
+      {/* Ambient chrome — ink grid + film grain + rust glow (inner pages) */}
+      {!isLanding && (
+        <>
+          <div className="ambient-grid pointer-events-none absolute inset-x-0 top-0 h-[920px]" aria-hidden="true" />
+          <div className="pointer-events-none absolute -top-[300px] right-0 h-[min(600px,100vw)] w-[min(600px,100vw)] rounded-full bg-primary opacity-[0.08] blur-[150px]" aria-hidden="true" />
+        </>
+      )}
       <div className="ambient-noise pointer-events-none fixed inset-0 z-[100]" aria-hidden="true" />
 
       <header className="sticky top-0 z-50">
