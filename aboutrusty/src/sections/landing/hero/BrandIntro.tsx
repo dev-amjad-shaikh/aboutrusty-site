@@ -1,4 +1,5 @@
 import { BrandMark } from "@/components/layout/SiteLayout";
+import { BrandField } from "./BrandField";
 
 /**
  * Brand introduction — the first screen of the site, BEFORE the reel.
@@ -23,7 +24,8 @@ export function BrandIntro() {
         }
       `}</style>
 
-      <div className="flex flex-col items-center px-6 text-center">
+      <BrandField />
+      <div className="relative z-10 flex flex-col items-center px-6 text-center">
         <div className="animate-[brand-rise_.7s_cubic-bezier(.22,.8,.24,1)_.05s_both] motion-reduce:animate-none">
           <BrandMark size={46} />
         </div>
