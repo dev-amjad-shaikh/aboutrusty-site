@@ -123,6 +123,72 @@ function MetricRowViz() {
   );
 }
 
+function EvidenceChainViz() {
+  const events: { seq: string; label: string; hash: string }[] = [
+    { seq: "0041", label: "model_call", hash: "9f2e…" },
+    { seq: "0042", label: "tool_effect", hash: "4ab7…" },
+    { seq: "0043", label: "checkpoint", hash: "c41a…" },
+  ];
+  return (
+    <div aria-hidden="true" className="mt-auto grid gap-1.5 pt-10">
+      {events.map((event) => (
+        <span
+          key={event.seq}
+          className="grid grid-cols-[34px_1fr_auto] items-center gap-2 border bg-background/60 px-2.5 py-1.5 font-code text-[10px] text-muted-foreground"
+        >
+          <b className="font-normal text-primary/80">#{event.seq}</b>
+          <span>{event.label}</span>
+          <code className="text-muted-foreground">{event.hash}</code>
+        </span>
+      ))}
+      <span className="mt-1.5 flex items-center justify-between font-code text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+        <span>sha-256 head · chained</span>
+        <span className="text-accent-foreground">replay: zero outbound calls</span>
+      </span>
+    </div>
+  );
+}
+
+function SurvivesViz() {
+  const states = ["leased", "retry", "dlq"];
+  const patterns = ["delegate", "fan-out", "race", "quorum"];
+  return (
+    <div aria-hidden="true" className="mt-auto pt-10">
+      <div className="flex items-center gap-1.5">
+        {states.map((state, i) => (
+          <span key={state} className="flex items-center gap-1.5">
+            <span
+              className={
+                state === "dlq"
+                  ? "border border-primary/50 bg-accent/40 px-2.5 py-1.5 font-code text-[10px] text-accent-foreground"
+                  : "border bg-background/60 px-2.5 py-1.5 font-code text-[10px] text-muted-foreground"
+              }
+            >
+              {state}
+            </span>
+            {i < states.length - 1 && (
+              <span className="font-code text-[10px] text-muted-foreground">→</span>
+            )}
+          </span>
+        ))}
+        <span className="ml-auto font-code text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+          task lifecycle
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-1.5">
+        {patterns.map((pattern) => (
+          <span
+            key={pattern}
+            className="border bg-background/60 px-2 py-1.5 text-center font-code text-[10px] text-muted-foreground"
+          >
+            {pattern}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const REASONS: Reason[] = [
   {
     index: "01 / DURABILITY",
@@ -148,6 +214,18 @@ const REASONS: Reason[] = [
     body: "The server is the interop layer: zero-dependency Python and TypeScript SDKs talk HTTP/SSE to it.",
     viz: <MetricRowViz />,
   },
+  {
+    index: "05 / EVIDENCE, NOT LOGS",
+    title: "A run should leave evidence, not logs.",
+    body: "The Flight Recorder journals every run as a tamper-evident, hash-chained event log. Exact replay re-drives a run with zero outbound calls, and portable fixtures make CI replayable.",
+    viz: <EvidenceChainViz />,
+  },
+  {
+    index: "06 / WORK THAT SURVIVES",
+    title: "Work should outlive its workers.",
+    body: "Leased tasks with heartbeats, a retry taxonomy with a dead-letter queue, and effect receipts — the same queue carries durable agent identities under supervision, with typed coordination: delegate, fan-out, race, quorum.",
+    viz: <SurvivesViz />,
+  },
 ];
 
 export function WhyRusty() {
@@ -156,7 +234,7 @@ export function WhyRusty() {
       <SectionHeading
         eyebrow="Why Rusty exists"
         title="Agent runs are fragile. Rusty is the fix."
-        description="Crashes lose work, human approval is bespoke glue, and runaway loops burn tokens. Rusty answers with its own engineering: state channels with reducers, transactional Pregel/BSP super-steps, and a versioned checkpoint at every step boundary — durability, human-in-the-loop, and time travel from one primitive, all on tokio."
+        description="Crashes lose work, human approval is bespoke glue, and runaway loops burn tokens. Rusty answers with its own engineering: state channels with reducers, transactional Pregel/BSP super-steps, and a versioned checkpoint at every step boundary — durability, human-in-the-loop, and time travel from one primitive, all on tokio. The direction from there: a verifiable, adaptive Agent OS, built one plane at a time."
       />
       <div className="mt-14 grid gap-3.5 sm:grid-cols-2">
         {REASONS.map((reason) => (

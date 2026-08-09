@@ -4,8 +4,8 @@ export const studio: Article = {
   slug: "studio",
   title: "Rusty Studio: the zero-build debug UI",
   description:
-    "A single HTML file that connects to any rusty-server: live colored event feeds, checkpoint timelines, and fork/replay as buttons — no npm, no build.",
-  readingTime: "7 min read",
+    "A single HTML file that connects to any rusty-server: live colored event feeds, checkpoint timelines, fork/replay as buttons, a Flight Recorder with causal paths, and a governed-memory ledger — no npm, no build.",
+  readingTime: "8 min read",
   kicker: "Guide",
   blocks: [
     {
@@ -19,7 +19,8 @@ export const studio: Article = {
       title: "studio/",
       code: `studio/
 ├── index.html   ← the entire UI (open this)
-└── serve.py     ← optional same-origin static host + API proxy`,
+├── serve.py     ← optional same-origin static host + API proxy
+└── test-*.mjs   ← node unit-test suites for the UI helpers (test-all.mjs runs them all)`,
     },
 
     { type: "heading", level: 2, text: "What it can do" },
@@ -28,7 +29,10 @@ export const studio: Article = {
       items: [
         "**Connect bar** — server base URL (default `http://127.0.0.1:8100`) plus an optional API key (`X-Api-Key` header). Connect calls `GET /info` and shows service version, checkpointer kind, and every registered graph with channel names. URL, key, and thread list persist in `localStorage`.",
         "**Graphs panel** — one card per registered graph, each with a **New thread** button (`POST /threads`).",
-        "**Threads panel (local-only)** — the server API (as of v0.4) has **no list-threads endpoint**, so threads live in the browser, keyed by server URL. **Attach by id** re-connects a thread the server already knows (and can re-create it with the same id after a server restart so on-disk checkpoints re-attach). ✕ *forget* only removes the local entry; nothing is deleted server-side.",
+        "**Agent workbench** — a catalog for durable assistants on top of `POST /assistants` / `GET /assistants`: create an agent from a registered behavior, inspect its configuration contract (separating what the server actually executes from catalog metadata and preserved unknown fields), safely **duplicate** an agent without carrying over identity or run history, and import/export a bounded, versioned `rusty.assistant/v1` manifest. A connection-scoped **recent run ledger** in the browser keeps only safe run metadata (identity, status, timing, error category) — prompts and result payloads are deliberately not stored.",
+        "**Governed memory ledger** — a tenant-wide, read-only audit surface over `POST /memory/query` and `POST /memory/conflicts`: active, candidate, expired, and superseded records with scope/kind/lifecycle filters, a **provenance spine** connecting each record to its author (human, agent, distiller, or system) and the run, correction, candidate, or journal evidence that produced it, plus a **conflict inbox** that isolates peer records claiming the same key for side-by-side review — the UI never silently picks a winner.",
+        "**Durable task queue** — a tenant-wide view (it belongs to no thread) over `GET /tasks?status=…`: kind, status, attempt counter, retry schedule, and pool per task, with a detail card showing the full envelope, lease, and settled result/receipt. **Cancel task** calls `POST /tasks/{id}/cancel`; terminal tasks show the button disabled with the reason.",
+        "**Threads panel (local-only)** — the server API (as of v0.7) has **no list-threads endpoint**, so threads live in the browser, keyed by server URL. **Attach by id** re-connects a thread the server already knows (and can re-create it with the same id after a server restart so on-disk checkpoints re-attach). ✕ *forget* only removes the local entry; nothing is deleted server-side.",
         "**Current state** — `GET /threads/{id}/state`, pretty-printed JSON grouped by channel, with `next` nodes and the current checkpoint ref (step, id, timestamp).",
         "**Checkpoint history** — `POST /threads/{id}/history` as a newest-first clickable timeline (step, timestamp, checkpoint id, next nodes).",
         "**Run (background)** — `POST /threads/{id}/runs` + live-polls `GET /runs/{run_id}` with a pulsing status badge until terminal state.",
@@ -58,6 +62,16 @@ export const studio: Article = {
     {
       type: "paragraph",
       text: "`stream_mode` checkboxes and a `multitask_strategy` selector map straight onto the run payload.",
+    },
+
+    { type: "heading", level: 2, text: "Flight Recorder: the run journal as a timeline" },
+    {
+      type: "paragraph",
+      text: "**Load events** fetches `GET /runs/{run_id}/events` (the run id auto-fills from any run you start) and renders the journaled evidence as a scrubbable timeline: one lane per node plus a run-wide lane for super-step boundaries, routing decisions, and checkpoint writes, with event chips colored by `kind` and super-step grouping rows. Click an event for the detail panel — effect-classification badge with its retry/replay meaning, causal parent (click to jump), latency, token usage, cost, and payloads (artifact refs shown as `sha256` + byte size). The **causal path** toggle highlights the selected event's ancestor chain via `parent` links; the scrub slider walks the journal in `seq` order.",
+    },
+    {
+      type: "paragraph",
+      text: "**Replay** is exact replay: `POST /runs/replay` re-drives the run from its persisted journal and renders the verdict as a banner — *verified* (every journaled event reproduced byte-for-byte) or *mismatch* (expected vs actual event counts, with the `first_divergence` seq as a jump link into the timeline). **Fork compare** takes two run ids, calls `GET /runs/diff?base=…&branch=…`, and renders both journals side by side aligned by `seq`: the identical prefix is dimmed, the first divergent seq is marked, and column headers carry per-branch event, token, and cost totals.",
     },
 
     { type: "heading", level: 2, text: "Fork and replay, as buttons" },
@@ -94,6 +108,12 @@ python3 studio/serve.py                  # http://127.0.0.1:8000/`,
     },
     {
       type: "callout",
+      variant: "note",
+      title: "Which port: 8100 or 8080?",
+      text: "Both appear in the docs, in different contexts — not a typo. The demo server (`examples/server_demo`) and `serve.py`'s proxy target use `127.0.0.1:8100`; the server-quickstart article's hand-rolled `main.rs` binds `0.0.0.0:8080`.",
+    },
+    {
+      type: "callout",
       variant: "warning",
       title: "Restrict CORS in production",
       text: "`rusty-server` v0.3+ layers `tower_http::cors::CorsLayer::permissive()` as the outermost middleware — every response carries `access-control-allow-origin: *`, and OPTIONS preflights are answered before the API-key middleware. **Production deployments should restrict this** (the permissive layer is a dev convenience).",
@@ -103,11 +123,14 @@ python3 studio/serve.py                  # http://127.0.0.1:8000/`,
     {
       type: "list",
       items: [
-        "Thread list is local-only (no `GET /threads` server-side as of v0.4); server restarts drop the in-memory thread registry — **Attach** re-creates a thread with the same id to re-attach to on-disk checkpoints.",
-        "Replay on the original thread appends history (checkpoint history is append-only); fork first to branch. Rollback (`DELETE /threads/{id}/runs/{run_id}`) is **not** exposed in the UI.",
+        "Thread list is local-only (still no `GET /threads` server-side as of v0.7); server restarts drop the in-memory thread registry — **Attach** re-creates a thread with the same id to re-attach to on-disk checkpoints.",
+        "Replay on the original thread appends history (checkpoint history is append-only); fork first to branch. Rollback of a finished run (`DELETE /threads/{id}/runs/{run_id}`) exists server-side but is **not** exposed in the UI.",
         "Pre-v0.3 servers: fork falls back to client-side composition; the replay `checkpoint` field is silently ignored — upgrade the server for real replay.",
-        "SSE resume (`Last-Event-ID`) is implemented server-side but not surfaced in the UI.",
-        "Single-process server with in-memory run registry: background-run polling 404s for runs created before a server restart.",
+        "Flight Recorder, exact replay, and fork compare need an R0.5+ server build (`GET /runs/{id}/events`, `POST /runs/replay`, `GET /runs/diff`); the task queue needs R0.6+ (`GET /tasks`, `POST /tasks/{id}/cancel`). Against older builds the panels explain the missing route and stay inert instead of erroring.",
+        "Exact replay only accepts fully deterministic journals: runs containing model, tool, remote, WASM, or resume effects are refused — replay the original run instead.",
+        "SSE resume (`Last-Event-ID`, honored by `GET /runs/{id}/stream`) is implemented server-side but not surfaced in the UI — reload the page and the live feed starts fresh.",
+        "The memory ledger is read-only by design: corrections, candidate approval, conflict resolution, and forgetting stay server-governed operations.",
+        "Single-process server with in-memory run registry: background-run polling (and Flight Recorder events) 404s for runs created before a server restart.",
       ],
     },
     {

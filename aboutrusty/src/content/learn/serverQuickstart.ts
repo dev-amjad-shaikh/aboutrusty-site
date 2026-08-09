@@ -57,7 +57,7 @@ cd agent-server-demo`,
     },
     {
       type: "paragraph",
-      text: "Add the dependencies to `Cargo.toml`. The `path` deps assume you created `agent-server-demo` as a **sibling** of the `rusty-core` and `rusty-server` checkouts — adjust the `path =` values if your layout differs.",
+      text: "Add the dependencies to `Cargo.toml`. The `path` deps assume you created `agent-server-demo` as a **sibling** of the `rusty-core` and `rusty-server` checkouts — adjust the `path =` values if your layout differs. Building outside the repo checkout: the crates are **not yet published to crates.io** (registry publishing is an R1.0 item), so depend on git instead — `rusty-agent-runtime = { git = \"https://github.com/dev-amjad-shaikh/rusty\" }` and `rusty-server = { git = \"https://github.com/dev-amjad-shaikh/rusty\" }`. Once published, this becomes `cargo add rusty-agent-runtime rusty-server`.",
     },
     {
       type: "code",
@@ -184,13 +184,17 @@ curl localhost:8080/ok
 # {"ok":true}
 
 curl localhost:8080/info
-# {"service":"rusty-server","version":"0.4.0","checkpointer":"json_file",
-#  "store_path":"./data/checkpoints",
+# {"service":"rusty-server","version":"0.7.0","checkpointer":"json_file",
+#  "server_store":"json_file","store_path":"./data/checkpoints",
 #  "graphs":[{"channels":["approval","draft"],"name":"publisher"}]}`,
     },
     {
       type: "paragraph",
       text: "To turn auth on: `ServerConfig::new(…).with_api_key(\"secret\")` — then add `-H \"X-Api-Key: secret\"` to every request.",
+    },
+    {
+      type: "paragraph",
+      text: "Port note: this tutorial's `main.rs` binds `:8080` via `ServerConfig::new(\"0.0.0.0:8080\", …)` — the repo's `scripts/dev.sh` demo server uses `:8100`, and Rusty Studio's dev proxy serves `:8000`.",
     },
 
     { type: "heading", level: 2, text: "Step 4 — Create a thread" },

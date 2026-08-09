@@ -42,10 +42,16 @@ const COMPONENTS: ComponentRow[] = [
       "One-call tracing subscriber setup with optional OTLP span export.",
   },
   {
+    piece: "Rusty Eval",
+    path: "rusty-eval/",
+    description:
+      "Agent TestOps: versioned eval datasets, deterministic assertions over recorded runs, experiment reports, baseline-vs-candidate compare, statistical regression detection, model judge, failure clustering, release gates, human feedback ops.",
+  },
+  {
     piece: "Rusty Studio",
     path: "studio/",
     description:
-      "Zero-build debug UI: connect, run, stream, inspect state and checkpoint history, fork and replay, Flight Recorder timeline with causal path and branch compare.",
+      "Zero-build vanilla-JS debug UI: connect bar, graphs and threads panels, all three run modes, interrupt/resume, fork/replay, Flight Recorder timeline with causal path and branch compare, tenant-wide task queue view, agent workbench, governed-memory ledger.",
   },
   {
     piece: "Rusty SDKs",
@@ -61,7 +67,7 @@ export function ComponentsTable() {
       <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6 sm:py-32">
         <SectionHeading
           eyebrow="Components"
-          title="Four crates, a studio, and two SDKs."
+          title="Five crates, a studio, and two SDKs."
           description="Packages version independently. The crates are implemented but not yet published to any registry — crates.io / npm / PyPI publishing is on the R1.0 roadmap."
         />
         <div className="mt-14 overflow-x-auto rounded-lg border bg-background/70">

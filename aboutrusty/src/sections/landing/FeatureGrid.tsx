@@ -13,6 +13,10 @@ import {
   Box,
   Plug,
   Store,
+  FileClock,
+  ListChecks,
+  Users,
+  ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";
@@ -48,6 +52,26 @@ const FEATURES: Feature[] = [
     icon: History,
     title: "Fork & replay time travel",
     body: "Branch any thread at any historical checkpoint and replay from it. Fork first, replay on the fork.",
+  },
+  {
+    icon: FileClock,
+    title: "Flight Recorder",
+    body: "Every run journaled as replayable evidence — canonical RunEvent contracts and a causal effect journal with a tamper-evident hash-chained head. Exact replay re-drives a run with zero outbound calls; portable fixtures carry replay into CI — GET /runs/{id}/events, GET /runs/{id}/fixture, POST /runs/replay, GET /runs/diff.",
+  },
+  {
+    icon: ListChecks,
+    title: "Durable Work",
+    body: "A durable task queue on file or Postgres backends: leases with heartbeats, the closed ErrorClass retry taxonomy with jittered backoff capped at 5 minutes, DLQ, cancellation propagation, and a transactional outbox. Effect receipts make recovery honest — at-least-once delivery plus idempotency, never pretend exactly-once.",
+  },
+  {
+    icon: Users,
+    title: "Agent Fabric",
+    body: "Durable agent identities (AgentId) with typed mailboxes and capability manifests, OTP-style supervision with fencing tokens, and four typed coordination patterns — delegate/handoff, fan-out/map, race, quorum. TeamTrace assembles one cross-journal causal tree per team.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Effect kernel v2",
+    body: "Retry safety enforced at compile time — marker traits PureEffect, ReadOnlyEffect, IdempotentEffect, CompensatableEffect, and IrreversibleEffect, with approval tokens gating irreversible effects. A versioned run manifest SHA-256-pins prompts, tool schemas, and model config into every checkpoint.",
   },
   {
     icon: Network,

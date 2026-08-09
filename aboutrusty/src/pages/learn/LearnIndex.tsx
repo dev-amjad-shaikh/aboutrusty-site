@@ -14,8 +14,9 @@ export function LearnIndex() {
           Learn Rusty
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-          Five articles that take you from the execution model to a served
-          graph, human-in-the-loop, the zero-build debug UI, and the project's
+          Seven articles that take you from the execution model to a served
+          graph, human-in-the-loop, the Flight Recorder's evidence and replay,
+          the durable work fabric, the zero-build debug UI, and the project's
           stability contract. Every command, identifier, and claim is traced to
           the source docs.
         </p>
