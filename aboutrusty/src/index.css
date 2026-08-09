@@ -2,11 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Rusty Relay Display — custom display face (Bold only, basic Latin + digits) */
+/* Rusty Relay Riveted — custom display face (Bold only; lowercase maps to uppercase forms) */
 @font-face {
-  font-family: "Rusty Relay Display";
-  src: url("/fonts/rusty-relay-display-bold.woff2") format("woff2"),
-    url("/fonts/rusty-relay-display-bold.ttf") format("truetype");
+  font-family: "Rusty Relay Riveted";
+  src: url("/fonts/rusty-relay-riveted-bold.woff2") format("woff2"),
+    url("/fonts/rusty-relay-riveted-bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -71,9 +71,9 @@
 
 @layer utilities {
   .font-display {
-    font-family: "Rusty Relay Display", "Manrope", ui-sans-serif, system-ui,
+    font-family: "Rusty Relay Riveted", "Manrope", ui-sans-serif, system-ui,
       -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.02em;
   }
   .font-code {
     font-family: "DM Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
