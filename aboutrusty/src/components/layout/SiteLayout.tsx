@@ -141,6 +141,7 @@ export function SiteLayout() {
               <li><Link to="/learn/server-quickstart" className="transition-colors hover:text-foreground">Server quickstart</Link></li>
               <li><Link to="/learn/human-in-the-loop" className="transition-colors hover:text-foreground">Interrupts &amp; time travel</Link></li>
               <li><Link to="/learn/studio" className="transition-colors hover:text-foreground">Rusty Studio</Link></li>
+              <li><Link to="/learn/capability-planes" className="transition-colors hover:text-foreground">Capability planes</Link></li>
               <li><Link to="/learn/roadmap-and-stability" className="transition-colors hover:text-foreground">Roadmap &amp; stability</Link></li>
             </ul>
           </div>

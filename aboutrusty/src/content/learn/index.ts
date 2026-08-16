@@ -4,16 +4,18 @@ import { serverQuickstart } from "./serverQuickstart";
 import { humanInTheLoop } from "./humanInTheLoop";
 import { flightRecorder } from "./flightRecorder";
 import { durableWorkFabric } from "./durableWorkFabric";
+import { capabilityPlanes } from "./capabilityPlanes";
 import { studio } from "./studio";
 import { roadmapAndStability } from "./roadmapAndStability";
 
-/** Articles in display order — index badges 01–07 derive from this order. */
+/** Articles in display order — index badges 01–08 derive from this order. */
 export const articles: Article[] = [
   architecture,
   serverQuickstart,
   humanInTheLoop,
   flightRecorder,
   durableWorkFabric,
+  capabilityPlanes,
   studio,
   roadmapAndStability,
 ];

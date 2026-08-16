@@ -4,26 +4,52 @@ export const studio: Article = {
   slug: "studio",
   title: "Rusty Studio: the zero-build debug UI",
   description:
-    "A single HTML file that connects to any rusty-server: live colored event feeds, checkpoint timelines, fork/replay as buttons, a Flight Recorder with causal paths, and a governed-memory ledger — no npm, no build.",
+    "Two UIs, one server: the v4 React app (studio/ui) — ten screens from Command Center to Operations — and the zero-build single-file debug console: live event feeds, checkpoint timelines, fork/replay as buttons, a Flight Recorder with causal paths, and a governed-memory ledger.",
   readingTime: "8 min read",
   kicker: "Guide",
   blocks: [
     {
       type: "callout",
       variant: "quote",
-      text: "A zero-build, single-file debug UI for `rusty-server`. One HTML file, vanilla JS + CSS, no npm, no framework, no bundler — open it and point it at a running server.",
+      text: "Rusty Studio is two UIs in one repo: the v4 React app (`studio/ui`) and the zero-build, single-file debug console (`studio/index.html`) — vanilla JS + CSS, no npm, no framework, no bundler — open it and point it at a running server. The v4 app first; the legacy console below.",
     },
     {
       type: "code",
       language: "text",
       title: "studio/",
       code: `studio/
-├── index.html   ← the entire UI (open this)
+├── ui/          ← the v4 React app (ten screens, lifecycle navigation)
+├── index.html   ← the legacy zero-build console (open this)
 ├── serve.py     ← optional same-origin static host + API proxy
 └── test-*.mjs   ← node unit-test suites for the UI helpers (test-all.mjs runs them all)`,
     },
 
-    { type: "heading", level: 2, text: "What it can do" },
+    { type: "heading", level: 2, text: "Studio v4: the React app (studio/ui)" },
+    {
+      type: "paragraph",
+      text: "Alongside the legacy single-file console, `studio/ui` is a React application with a lifecycle-oriented navigation model (`studio/ui/src/app/navigation.ts`). Both ship in the repo and both talk to the same server; the legacy console documented below remains the zero-build debug surface — per `docs/versioning.md`, the v4 app's typed wire schemas and committed production bundle are validated in CI against the same-cycle server contract, and the legacy console is a temporary advanced compatibility surface.",
+    },
+    {
+      type: "table",
+      head: ["Lifecycle group", "Screens (routes)"],
+      rows: [
+        ["Oversee", "Command Center (`/`) · Agent Portfolio (`/agents`)"],
+        ["Build", "Agent Builder (`/agents/new`) · Prompt Library (`/agents/prompts`) · Skills & Tools (`/skills`) · Knowledge (`/knowledge`)"],
+        ["Prove", "Run & Evaluate (`/work`)"],
+        ["Operate", "Memory (`/memory`) · Connectors (`/connectors`) · Operations (`/operations`)"],
+      ],
+      caption: "Ten screens, four lifecycle groups — as routed at main @ d1d1b87.",
+    },
+    {
+      type: "paragraph",
+      text: "The **Command Center** is the root route and answers three questions from evidence the server can prove now: what work is moving or recently finished, what needs attention, and what can I do next. Its board groups the current Studio session's recent work by server status — queued (`pending`), working (`running`), needs you (`interrupted` plus current operational exceptions), stuck (`error`), done (`success`) — and joins exceptions from the Operations projection into the needs-you column. If an evidence source is unavailable, the Command Center names it as unavailable; it never presents missing evidence as healthy.",
+    },
+    {
+      type: "paragraph",
+      text: "The design contract (`docs/studio-v4-command-center-design.md`) sets the rules: a persistent lifecycle rail on desktop (an in-flow expandable navigator on mobile), every route on a shared page header — one lifecycle context, one task name, one orientation line — and the v4 industrial design language (graphite canvas, rust/copper signal color, compact mono evidence labels). The Skills & Tools, Knowledge, Memory, and Connectors screens front the capability-plane APIs described in [Skills, connectors, and knowledge](/learn/capability-planes).",
+    },
+
+    { type: "heading", level: 2, text: "The legacy console: what it can do" },
     {
       type: "list",
       items: [
@@ -123,7 +149,7 @@ python3 studio/serve.py                  # http://127.0.0.1:8000/`,
     {
       type: "list",
       items: [
-        "Thread list is local-only (still no `GET /threads` server-side as of v0.7); server restarts drop the in-memory thread registry — **Attach** re-creates a thread with the same id to re-attach to on-disk checkpoints.",
+        "Thread list is local-only (still no `GET /threads` list endpoint server-side; thread records themselves are durable — one JSON file per record under `store_path`, `server_threads` on Postgres — and the server reloads them at boot). The **Attach** flow re-connects a thread the server already knows by id.",
         "Replay on the original thread appends history (checkpoint history is append-only); fork first to branch. Rollback of a finished run (`DELETE /threads/{id}/runs/{run_id}`) exists server-side but is **not** exposed in the UI.",
         "Pre-v0.3 servers: fork falls back to client-side composition; the replay `checkpoint` field is silently ignored — upgrade the server for real replay.",
         "Flight Recorder, exact replay, and fork compare need an R0.5+ server build (`GET /runs/{id}/events`, `POST /runs/replay`, `GET /runs/diff`); the task queue needs R0.6+ (`GET /tasks`, `POST /tasks/{id}/cancel`). Against older builds the panels explain the missing route and stay inert instead of erroring.",

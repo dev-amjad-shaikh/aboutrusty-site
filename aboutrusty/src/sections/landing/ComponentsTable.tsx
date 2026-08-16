@@ -21,13 +21,13 @@ const COMPONENTS: ComponentRow[] = [
     piece: "Rusty Core",
     path: "rusty-core/ (rusty-agent-runtime)",
     description:
-      "The engine: state channels + reducers, graph builder, super-step executor, checkpoints (memory / JSON file / Postgres), interrupts, Send fan-out, prebuilt ReAct agent, MCP client, remote nodes, WASM nodes, Flight Recorder (run journal + exact replay). No HTTP.",
+      "The engine: state channels + reducers, graph builder, super-step executor, checkpoints (memory / JSON file / Postgres), interrupts, Send fan-out, prebuilt ReAct agent, MCP client, remote nodes, WASM nodes, Flight Recorder (run journal + exact replay). The capability planes live here too: governed skills, connectors, knowledge, and resolved capability sets. No HTTP.",
   },
   {
     piece: "Rusty Server",
     path: "rusty-server/",
     description:
-      "axum HTTP/SSE server: threads, background / blocking / streaming runs, checkpoint history, fork + replay, assistants, crons, KV store, multi-tenant API-key auth.",
+      "axum HTTP/SSE server: threads, background / blocking / streaming runs, checkpoint history, fork + replay, assistants, crons, KV store, multi-tenant API-key auth, plus the /skills, /connectors, and /knowledge plane APIs.",
   },
   {
     piece: "Rusty Worker",
@@ -51,7 +51,7 @@ const COMPONENTS: ComponentRow[] = [
     piece: "Rusty Studio",
     path: "studio/",
     description:
-      "Zero-build vanilla-JS debug UI: connect bar, graphs and threads panels, all three run modes, interrupt/resume, fork/replay, Flight Recorder timeline with causal path and branch compare, tenant-wide task queue view, agent workbench, governed-memory ledger.",
+      "Two UIs: the zero-build vanilla-JS debug console (index.html) — connect bar, all three run modes, Flight Recorder timeline with causal path and branch compare, task queue, agent workbench, memory ledger — and the v4 React app (studio/ui): ten screens from Command Center to Operations.",
   },
   {
     piece: "Rusty SDKs",
@@ -68,7 +68,7 @@ export function ComponentsTable() {
         <SectionHeading
           eyebrow="Components"
           title="Five crates, a studio, and two SDKs."
-          description="Packages version independently. The crates are implemented but not yet published to any registry — crates.io / npm / PyPI publishing is on the R1.0 roadmap."
+          description="Packages version independently. All seven are published: five crates on crates.io, the TypeScript client on npm, the Python client on PyPI."
         />
         <div className="mt-14 overflow-x-auto rounded-lg border bg-background/70">
           <Table className="min-w-[560px]">

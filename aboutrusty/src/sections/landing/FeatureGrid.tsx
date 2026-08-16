@@ -17,6 +17,10 @@ import {
   ListChecks,
   Users,
   ShieldCheck,
+  Package,
+  Cable,
+  BookOpen,
+  Fingerprint,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";
@@ -87,6 +91,26 @@ const FEATURES: Feature[] = [
     icon: Plug,
     title: "MCP client",
     body: "Call any MCP server's tools from Rusty Tool impls over stdio; MCP servers register into the ToolRegistry like native tools.",
+  },
+  {
+    icon: Package,
+    title: "Skill plane",
+    body: "Governed SKILL.md packages: fail-closed parsing, mandatory provenance, a deterministic security scan, and immutable content-addressed versions. Progressive disclosure in three tiers — metadata, body, then references/assets one member at a time. Served over /skills.",
+  },
+  {
+    icon: Cable,
+    title: "Connector plane",
+    body: "Lifecycle-managed providers of tools: content-addressed manifests, per-tenant instances (pending → connecting → healthy | degraded | failed, plus disabled), credentials injected as broker handles — never raw bytes — and tool catalogs pinned by generation, never “latest”. MCP stdio and HTTP search providers; /connectors API.",
+  },
+  {
+    icon: BookOpen,
+    title: "Knowledge plane",
+    body: "Governed sources with mandatory provenance and retention policies, deterministic chunking into content-addressed chunks, and hybrid retrieval that returns cited chunks, never bare text. Corrections mint superseding versions; sweeps tombstone sources so old citations still resolve. /knowledge API.",
+  },
+  {
+    icon: Fingerprint,
+    title: "Resolved capability sets",
+    body: "One immutable, content-addressed composition (cs-<sha256>) per agent version, resolved at admission: config.capability_set or a bare config.tool_allowlist — mutually exclusive — validated against the graph's executable catalog before the run starts. The set id pins into the run manifest; replay re-resolves and fails closed on a missing member.",
   },
   {
     icon: Bot,

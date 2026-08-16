@@ -57,7 +57,7 @@ cd agent-server-demo`,
     },
     {
       type: "paragraph",
-      text: "Add the dependencies to `Cargo.toml`. The `path` deps assume you created `agent-server-demo` as a **sibling** of the `rusty-core` and `rusty-server` checkouts — adjust the `path =` values if your layout differs. Building outside the repo checkout: the crates are **not yet published to crates.io** (registry publishing is an R1.0 item), so depend on git instead — `rusty-agent-runtime = { git = \"https://github.com/dev-amjad-shaikh/rusty\" }` and `rusty-server = { git = \"https://github.com/dev-amjad-shaikh/rusty\" }`. Once published, this becomes `cargo add rusty-agent-runtime rusty-server`.",
+      text: "Add the dependencies to `Cargo.toml`. Both crates are published on crates.io, so building outside the repo checkout is just `rusty-agent-runtime = \"0.12\"` and `rusty-agent-server = \"0.12\"` — or `cargo add rusty-agent-runtime rusty-agent-server`. The `path` deps below assume you created `agent-server-demo` as a **sibling** of the `rusty-core` and `rusty-server` checkouts — adjust the `path =` values if your layout differs.",
     },
     {
       type: "code",
@@ -184,7 +184,8 @@ curl localhost:8080/ok
 # {"ok":true}
 
 curl localhost:8080/info
-# {"service":"rusty-server","version":"0.7.0","checkpointer":"json_file",
+# {"service":"rusty-server","version":"0.12.0","api_protocol_version":1,
+#  "checkpointer":"json_file",
 #  "server_store":"json_file","store_path":"./data/checkpoints",
 #  "graphs":[{"channels":["approval","draft"],"name":"publisher"}]}`,
     },
@@ -249,7 +250,7 @@ TID=<paste the thread_id here>`,
       type: "callout",
       variant: "note",
       title: "Durable by default",
-      text: "The run suspended inside `approve`, and the executor persisted a checkpoint for the thread — this is durable, so you could restart the server right now and lose nothing. (Thread records live in memory; checkpoints are durable on disk — re-create the thread with the same `thread_id` after a restart.)",
+      text: "The run suspended inside `approve`, and the executor persisted a checkpoint for the thread — this is durable, so you could restart the server right now and lose nothing. (Thread records are durable too: one JSON file per record under `store_path` on the file backend, the `server_threads` table on Postgres — the server reloads them at boot.)",
     },
     {
       type: "paragraph",

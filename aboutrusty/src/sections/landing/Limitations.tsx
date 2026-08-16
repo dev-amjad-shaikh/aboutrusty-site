@@ -13,8 +13,8 @@ const LIMITATIONS: Limitation[] = [
     body: "One process runs the super-step loop. Remote nodes distribute node work, but the executor itself is not clustered and has no failover.",
   },
   {
-    title: "No durable queue.",
-    body: "Queued runs live in an in-memory per-thread FIFO; a server restart drops pending (not-yet-started) runs. Durable queues and autoscaling are open R1.0 items.",
+    title: "No autoscaling yet.",
+    body: "Queued runs persist on enqueue (one file per run / the server_pending_runs table, both store backends) and resume draining after a restart — the durable-queue R1.0 gate landed 2026-08-12. Autoscaling workers remains an open R1.0 item.",
   },
   {
     title: "Persistence is single-node.",
