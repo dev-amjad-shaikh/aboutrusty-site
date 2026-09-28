@@ -1,11 +1,11 @@
 import { Link, NavLink, Outlet } from "react-router";
 
 const navItems = [
-  { to: "/", label: "Overview", end: true },
+  { to: "/", label: "Product", end: true },
   { to: "/docs", label: "Docs", end: false },
   { to: "/learn", label: "Learn", end: false },
-  { to: "/guide", label: "Guide", end: false },
-  { to: "/playground", label: "Playground", end: false },
+  { to: "/research", label: "Research", end: false },
+  { to: "/releases", label: "Releases", end: false },
 ];
 
 /** The official Rusty mark — torn-paper rust blob with a riveted R cut out. */
@@ -24,14 +24,6 @@ const footerColumns: {
   links: { label: string; to?: string; href?: string }[];
 }[] = [
   {
-    heading: "Site",
-    links: [
-      { label: "Overview", to: "/" },
-      { label: "Guide", to: "/guide" },
-      { label: "Playground", to: "/playground" },
-    ],
-  },
-  {
     heading: "Learn",
     links: [
       { label: "Docs", to: "/docs" },
@@ -39,6 +31,8 @@ const footerColumns: {
       { label: "Concepts", to: "/concepts" },
       { label: "Research", to: "/research" },
       { label: "Releases", to: "/releases" },
+      { label: "The book", to: "/guide" },
+      { label: "Playground", to: "/playground" },
     ],
   },
   {
@@ -85,7 +79,7 @@ export function SiteLayout() {
           borderColor: "rgba(236, 150, 96, 0.1)",
         }}
       >
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-[26px] px-7 py-3">
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-[26px] gap-y-1 px-4 py-2.5 sm:px-7 sm:py-3">
           <Link
             to="/"
             className="flex items-center gap-2.5 text-[#f7ece4] no-underline"
@@ -96,14 +90,14 @@ export function SiteLayout() {
               Rusty
             </span>
           </Link>
-          <nav className="flex flex-wrap gap-0.5">
+          <nav className="order-last -mx-1 flex w-full gap-0.5 overflow-x-auto md:order-none md:mx-0 md:w-auto [scrollbar-width:none]">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `rounded-lg px-3 py-2 text-[14.5px] font-light no-underline transition-colors ${
+                  `shrink-0 rounded-lg px-3 py-2 text-[14.5px] font-light no-underline transition-colors ${
                     isActive
                       ? "text-[#fff3ea]"
                       : "text-[#c9bdb2] hover:bg-[rgba(236,150,96,0.1)] hover:text-[#fff3ea]"
@@ -118,12 +112,13 @@ export function SiteLayout() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2.5">
-            <span
-              className="hidden rounded-md border px-[9px] py-[5px] font-code text-[11.5px] text-[#cbb3a2] sm:inline-block"
+            <Link
+              to="/releases"
+              className="hidden rounded-md border px-[9px] py-[5px] font-code text-[11.5px] text-[#cbb3a2] no-underline transition-colors hover:border-[rgba(240,134,43,0.4)] hover:text-[#ffd0b3] sm:inline-block"
               style={{ borderColor: "rgba(236, 150, 96, 0.18)" }}
             >
               v0.13 · R0.12
-            </span>
+            </Link>
             <a
               href="https://github.com/dev-amjad-shaikh/rusty"
               target="_blank"
@@ -190,7 +185,7 @@ export function SiteLayout() {
           className="border-t py-5 text-center font-code text-[10px] uppercase tracking-[0.14em] text-[#6f675f]"
           style={{ borderColor: "rgba(236, 150, 96, 0.08)" }}
         >
-          aboutrusty.com · v0.13 · R0.12 — Operations Plane · © 2026 rusty
+          aboutrusty.com · v0.13 · R0.12 Operations Plane · © 2026 Rusty
           contributors
         </div>
       </footer>

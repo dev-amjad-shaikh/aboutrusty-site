@@ -78,7 +78,7 @@ export function PlatformStack() {
           for OpenTelemetry tracing.
         </span>
       </div>
-      <div className="flex justify-center py-5" style={{ perspective: 1400 }}>
+      <div className="flex justify-center overflow-hidden py-5" style={{ perspective: 1400 }}>
         <div
           className="relative h-[430px] w-[min(100%,460px)]"
           style={{
