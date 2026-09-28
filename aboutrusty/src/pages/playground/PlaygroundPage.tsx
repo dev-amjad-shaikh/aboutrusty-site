@@ -559,14 +559,14 @@ export function PlaygroundPage() {
         </p>
         <p className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
           <Link
-            to="/learn/server-quickstart"
+            to="/docs?p=quickstart"
             className="inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
           >
             Run the real server
             <ArrowRight size={12} />
           </Link>
           <Link
-            to="/learn/studio"
+            to="/docs?p=local"
             className="inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 hover:underline"
           >
             Open Rusty Studio

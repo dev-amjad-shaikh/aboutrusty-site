@@ -50,7 +50,7 @@ const WRITES: Record<NodeName, { text: string; delta: Partial<Channels> }> = {
   write: { text: "draft = \"…\"", delta: { draft: "written" } },
 };
 
-const ROUTE: Record<number, NodeName[]> = { 1: ["fetch", "search"], 2: ["write"], 3: [] };
+const ROUTE: Record<number, NodeName[]> = { 0: ["fetch", "search"], 1: ["write"], 2: [] };
 
 function apply(s: Channels, nodes: NodeName[]): Channels {
   const out = { ...s };
@@ -87,7 +87,7 @@ function superStep(
       stage: 0,
       lanes: lanes("running").map((l) => ({ ...l, status: "running" as LaneStatus, write: "" })),
       caption:
-        step === 1
+        step === 0
           ? "Plan. The first step starts at the entry point, so the active set is plan."
           : `Plan. The previous step's routing scheduled ${who}. That is this step's active set.`,
     },
@@ -133,7 +133,7 @@ function superStep(
       lanes: lanes("done"),
       state: merged,
       cps: [...cps, cp],
-      caption: `Checkpoint ${cp.n}. Rusty saves the step number, the full state, and the next-node set [${next.join(", ")}]. This is the only point where state is persisted.`,
+      caption: `Checkpoint ${cp.n}. Rusty saves the step number, the full state, and the next-node set [${next.join(", ")}]. Checkpoints are written at step boundaries, never in the middle of a node.`,
     },
   ];
   return { frames, state: merged, cps: [...cps, cp] };
@@ -143,7 +143,7 @@ const EMPTY: Channels = { messages: 1, sources: 0, draft: null };
 
 function doneFrame(state: Channels, cps: Checkpoint[]): Frame {
   return {
-    step: 3,
+    step: 2,
     stage: -1,
     lanes: [],
     state,
@@ -156,18 +156,18 @@ function doneFrame(state: Channels, cps: Checkpoint[]): Frame {
 
 function build(scenario: Scenario): Frame[] {
   const f: Frame[] = [];
-  let r = superStep(1, ["plan"], EMPTY, []);
+  let r = superStep(0, ["plan"], EMPTY, []);
   f.push(...r.frames);
 
   if (scenario === "normal") {
-    const s2 = superStep(2, ["fetch", "search"], r.state, r.cps);
-    const s3 = superStep(3, ["write"], s2.state, s2.cps);
+    const s2 = superStep(1, ["fetch", "search"], r.state, r.cps);
+    const s3 = superStep(2, ["write"], s2.state, s2.cps);
     f.push(...s2.frames, ...s3.frames, doneFrame(s3.state, s3.cps));
     return f;
   }
 
   if (scenario === "fail") {
-    const s2 = superStep(2, ["fetch", "search"], r.state, r.cps).frames.slice(0, 2);
+    const s2 = superStep(1, ["fetch", "search"], r.state, r.cps).frames.slice(0, 2);
     f.push(...s2);
     const failedLanes: Lane[] = [
       { node: "fetch", status: "failed", write: "error: upstream 500" },
@@ -188,13 +188,13 @@ function build(scenario: Scenario): Frame[] {
         { node: "search", status: "discarded", write: WRITES.search.text },
       ],
       status: "failed",
-      caption: "The whole step is discarded, including search's writes. State stays exactly as checkpoint 1 left it, and the run returns an error naming fetch and step 2.",
+      caption: "The whole step is discarded, including search's writes. State stays exactly as checkpoint 1 left it, and the run returns an error naming fetch and step 1.",
     });
     return f;
   }
 
   if (scenario === "interrupt") {
-    const s2 = superStep(2, ["fetch", "search"], r.state, r.cps).frames.slice(0, 2);
+    const s2 = superStep(1, ["fetch", "search"], r.state, r.cps).frames.slice(0, 2);
     f.push(...s2);
     f.push({
       ...s2[1],
@@ -205,7 +205,7 @@ function build(scenario: Scenario): Frame[] {
       ],
       caption: "Barrier. fetch calls ctx.interrupt() to ask a person whether a source may be used. search already finished.",
     });
-    const parked: Checkpoint = { n: r.cps.length + 1, step: 2, next: ["fetch", "search"] };
+    const parked: Checkpoint = { n: r.cps.length + 1, step: 1, next: ["fetch", "search"] };
     const cps = [...r.cps, parked];
     f.push({
       ...s2[1],
@@ -219,22 +219,22 @@ function build(scenario: Scenario): Frame[] {
       status: "interrupted",
       caption: `The step's writes are discarded and checkpoint ${parked.n} reschedules the whole active set, fetch and search. The run returns Interrupted. No process has to stay alive while it waits.`,
     });
-    const s2b = superStep(2, ["fetch", "search"], r.state, cps, "resumed");
+    const s2b = superStep(1, ["fetch", "search"], r.state, cps, "resumed");
     s2b.frames[0] = {
       ...s2b.frames[0],
       status: "running",
       caption: "Resume. A person approves, and the caller runs the same thread with with_resume(decision). Both nodes start again from the beginning; fetch reads the decision from ctx.resume_value().",
     };
-    const s3 = superStep(3, ["write"], s2b.state, s2b.cps);
+    const s3 = superStep(2, ["write"], s2b.state, s2b.cps);
     f.push(...s2b.frames, ...s3.frames, doneFrame(s3.state, s3.cps));
     return f;
   }
 
   // crash
-  const s2 = superStep(2, ["fetch", "search"], r.state, r.cps);
+  const s2 = superStep(1, ["fetch", "search"], r.state, r.cps);
   f.push(...s2.frames);
   r = s2;
-  const s3a = superStep(3, ["write"], r.state, r.cps).frames.slice(0, 2);
+  const s3a = superStep(2, ["write"], r.state, r.cps).frames.slice(0, 2);
   f.push(...s3a);
   f.push({
     ...s3a[1],
@@ -242,7 +242,7 @@ function build(scenario: Scenario): Frame[] {
     lanes: [],
     pending: null,
     status: "crashed",
-    caption: "kill -9. The server process dies in the middle of step 3. write's unfinished work is lost. Checkpoints 1 and 2 are already on disk.",
+    caption: "kill -9. The server process dies in the middle of step 2. write's unfinished work is lost. Checkpoints 1 and 2 are already on disk.",
   });
   f.push({
     ...s3a[1],
@@ -250,9 +250,9 @@ function build(scenario: Scenario): Frame[] {
     lanes: [],
     pending: null,
     status: "restarting",
-    caption: "A new process starts against the same store and loads the thread's latest checkpoint: step 2, next [write]. Steps 1 and 2 do not run again.",
+    caption: "A new process starts against the same store and loads the thread's latest checkpoint: step 1, next [write]. Steps 0 and 1 do not run again.",
   });
-  const s3 = superStep(3, ["write"], r.state, r.cps, "after restart");
+  const s3 = superStep(2, ["write"], r.state, r.cps, "after restart");
   f.push(...s3.frames, doneFrame(s3.state, s3.cps));
   return f;
 }
@@ -671,7 +671,7 @@ export function AnatomyOfRun() {
       </div>
 
       <div className="flex flex-wrap gap-6 text-[15px]">
-        <Link to="/learn/2.3">The super-step loop, in depth →</Link>
+        <Link to="/learn/super-step-loop">The super-step loop, in depth →</Link>
         <a href="https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/architecture.md" target="_blank" rel="noreferrer">
           docs/architecture.md ↗
         </a>
