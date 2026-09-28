@@ -75,14 +75,14 @@ A manifest declares one agent. Packaging reusable definitions is the catalog's j
 
 `PackageKind` has four variants: `Connector`, `ToolPack`, `SkillPack`, and `BlueprintTemplate`. The first three have working content: the repository's `catalog/` directory ships a dozen connector manifests (GitHub, Jira, Slack, Stripe, Zendesk, and others) plus skills. `BlueprintTemplate` exists as a package kind, but the core defines no blueprint content schema for it yet.
 
-Reusable team structure lives in Studio today. The Team Blueprint shelf ([docs/studio.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/studio.md)) saves a team topology you can reopen. Each reopen reconciles the saved roles against live role and manifest changes. Revising a blueprint creates a new blueprint id and never changes the saved one. Import and export use a strict, bounded `rusty.team-blueprint/v1` JSON document that rejects unknown fields. These blueprints are browser artifacts scoped to one server connection and tenant, not server-side catalog items.
+There is no team blueprint shelf in the current Studio. `docs/studio.md` still describes one from an earlier version of the workspace, but `studio/ui/src` has no such screen, so reusable team structure lives in code and in catalog packages for now.
 
 ::: tip Key takeaways
 - An agent is a tenant-namespaced `AgentId`, a thread `agent:{id}` holding its state, and a versioned `CapabilityManifest` with an exact version pin.
 - A mailbox is the durable task queue addressed to `agent:{id}`. An activation lease with a fencing token ensures one turn at a time.
 - Ordering is turn-sequential with approximate FIFO; carry a sequence number if you need strict order.
 - State scopes map onto existing stores, and supervision restarts from the checkpoint log and escalates by message.
-- Catalog packages are content-addressed and capability-declared. `BlueprintTemplate` is a declared kind without a content schema yet; Studio's team blueprints are browser-scoped.
+- Catalog packages are content-addressed and capability-declared. `BlueprintTemplate` is a declared kind without a content schema yet.
 :::
 
 **Further reading**
@@ -91,4 +91,3 @@ Reusable team structure lives in Studio today. The Team Blueprint shelf ([docs/s
 - [rusty-core/src/agents.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/agents.rs): `AgentId`, `CapabilityManifest`, `StateScope`, `SupervisionPolicy`
 - [rusty-server/src/supervision.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-server/src/supervision.rs): restart and escalation
 - [rusty-core/src/package.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/package.rs): the catalog package format and `PackageKind`
-- [docs/studio.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/studio.md): the Team Blueprint shelf

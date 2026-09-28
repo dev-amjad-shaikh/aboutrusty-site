@@ -6,10 +6,19 @@ title: Appendix D · Where it's going
 
 # The roadmap pointer
 
-This book deliberately ends here. The roadmap is a living document — [docs/roadmap.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/roadmap.md) — and anything this appendix froze into prose would be stale within a cycle. What follows is the durable shape, not the schedule.
+The roadmap is a living document: [docs/roadmap.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/roadmap.md). Anything this appendix copied would go stale within a cycle, so it records only the shape. Read the source for current status.
 
-**R1.0 — Unleashed** is the only upcoming track, and it's directional, not scheduled. The headline items: a clustered executor (failover for the super-step loop, durable queues with autoscaling — today's executor, queue, and persistence are single-node by design), graphs running on a WASM target for browser and edge, an OpenAPI description of the full server surface with generated clients, a core-crate decomposition along the `rusty-api` ABI, and the maturity gates: an independent security review, a documented capacity envelope, and production-shaped case studies.
+**R1.0 · Unleashed** is the next release track, the stable platform. Its items:
 
-**Explicitly rejected** — the roadmap says no, in writing, so the book records it too: PyO3 / napi-rs native bindings and a `cdylib` / C ABI. The HTTP/SSE server is the polyglot interop layer; that's a commitment, not a gap.
+- **Stability.** Stable public APIs, event schema, checkpoint format, capsule manifest, and migration policy.
+- **Clustered execution.** Executor failover and a distributed durable queue with autoscaling. Today the executor, queue, and persistence are single-node. The roadmap calls this the last architectural gap to a horizontally scalable runtime and the R1.0 critical path.
+- **Core decomposition and a spec-first API.** Split `rusty-agent-runtime` along the `rusty-api` ABI (engine, effects, evidence, learning), and publish an OpenAPI description of the server with generated, versioned clients. A hand-written OpenAPI 3.1 spec of the core surface (56 of 295 routes) already exists at `docs/api/openapi.yaml`; generating it from code is R1.0 work.
+- **Provider breadth by integration.** Integrate an external provider and vector layer instead of hand-building adapters, with Rusty's receipts and effect governance carried into those calls.
+- **Maturity gates.** An independent security review, a documented capacity envelope with supported deployment topologies, at least three production-shaped case studies (durability, multi-agent coordination, sandboxed execution), and no unresolved critical CI, data-loss, replay-integrity, or tenant-isolation defect.
+- **Also in scope.** A hosted multi-tenant control plane and graphs on a WASM target for browser and edge. Registry publishing to crates.io, npm, and PyPI is already done.
 
-The questions the platform has already answered — durability, evidence, governed learning, isolation, deployment — are what Parts II and III of this book cover. If you're evaluating Rusty against a roadmap item that matters to you, read the source document; if the item you need is in the rejected list, the rationale is written down there too, and it won't change quietly.
+[docs/stability.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/stability.md) lists the gates that must close before 1.0. After R1.0 the roadmap lists candidate breadth planes, such as realtime sessions and enterprise administration, as under consideration.
+
+**Explicitly rejected.** The roadmap says no, in writing, to PyO3 and napi-rs native bindings and to a `cdylib` / C ABI. The HTTP/SSE server is the interop layer for other languages (Chapter 13).
+
+Parts II and III of this book cover what the platform already does: durability, evidence, governed learning, isolation, and deployment. If you are evaluating Rusty against a roadmap item, read the source document. If the item you need is on the rejected list, the reasoning is written there too.

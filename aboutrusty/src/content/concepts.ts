@@ -14,7 +14,7 @@ export interface Term {
 export const TERMS: Term[] = [
   { term: "Agent (durable)", definition: "An agent with a stable ID, private state, and a persistent mailbox. Its state survives crashes and restarts.", lesson: "7.1" },
   { term: "Artifact", definition: "A file, image, audio clip, or dataset a run produced. Stored by content hash, with lineage back to the run and the effect that produced it.", lesson: "9.4" },
-  { term: "Candidate", definition: "A proposed change to a prompt, policy, memory set, or tool permission. Candidates are immutable and content-addressed, and reach production only through evaluation and promotion.", lesson: "8.1" },
+  { term: "Candidate", definition: "A proposed change to something that shapes a run: a prompt, an executor policy, a memory set, a tool permission or contract, model settings, a memory configuration, a middleware composition, a context policy, or a skill. Candidates are immutable and content-addressed, and reach production only through evaluation and promotion.", lesson: "8.1" },
   { term: "Canary deployment", definition: "A revision serves a declared fraction of new runs. Assignment is a seeded draw, so each run's assignment can be reproduced from its journal.", lesson: "9.3" },
   { term: "Capsule", definition: "A WebAssembly component with a manifest that declares its capabilities and resource budgets. A capability the manifest does not grant does not exist inside the capsule.", lesson: "10.1" },
   { term: "Checkpoint", definition: "A saved copy of a thread's state, written at the boundary after each super-step. Runs resume from the latest one.", lesson: "3.1" },
@@ -34,7 +34,7 @@ export const TERMS: Term[] = [
   { term: "Interrupt", definition: "A node calls ctx.interrupt(payload) to pause the run, usually to wait for a person. Resume with a value and the run continues from its checkpoint.", lesson: "3.2" },
   { term: "Knowledge source", definition: "Content added for retrieval, with provenance and a retention policy. Retrieval returns cited chunks." },
   { term: "Lease", definition: "A worker's time-limited claim on a durable task, kept alive by heartbeats. If the worker dies, the lease expires and the task becomes claimable again.", lesson: "4.2" },
-  { term: "Mailbox", definition: "A persistent, typed message queue for a durable agent. The runtime stores and retries its messages.", lesson: "7.1" },
+  { term: "Mailbox", definition: "A durable agent's address on the task queue. Every mailbox message is a TaskEnvelope, so it gets the queue's leases, retries, idempotency keys, and declared effect.", lesson: "7.1" },
   { term: "Promotion", definition: "Making a candidate or revision the active version, inside a declared envelope and with any required approval. It is a journaled step.", lesson: "8.4" },
   { term: "Reducer", definition: "The rule that merges writes to a state channel: Overwrite, Append, DeepMerge, or AddMessages.", lesson: "2.2" },
   { term: "Release gate", definition: "A check that must pass before a revision is promoted into a gated environment. It replays the revision against a recorded dataset and compares it with the serving revision.", lesson: "9.2" },

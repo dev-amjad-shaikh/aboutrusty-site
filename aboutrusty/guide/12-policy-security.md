@@ -6,56 +6,83 @@ title: 12 · Policy & security
 
 # Policy & security
 
-Every previous Part II chapter had a security mechanism inside it — manifests, gates, denials, sealed secrets. This chapter steps back and looks at the whole arrangement, because security in an agent platform is not a feature but a stack: who is calling, what the code may reach, what the agent may do, what leaves the network, and where a human must say yes. The design principle running through all of it: **denial must be structural, attributable, and evidenced** — a refusal you can show, never a refusal you assert.
+Each earlier Part II chapter contained a security mechanism: manifests, gates, denials, sealed secrets. This chapter puts them in order as layers. Each layer answers one question: who is calling, what may be installed, which effects may run, what may leave the network, and where a person must approve. The rule that runs through all of them is that a denial must be structural, attributable to a specific rule, and recorded.
 
 ## The concept: defense in depth for systems that act
 
-Classic application security guards requests: authenticate the caller, authorize the action. Agent systems add a harder problem — the *agent itself* is an actor, driven by model output that is partially adversarial (prompt injection is not an edge case; it's Tuesday). So the stack needs more layers than a CRUD app: caller identity, yes, but also capability declarations for code, effect classifications for actions, egress control for the network, and approval boundaries for the irreversible. And every layer has to answer the audit question afterward: not "was it probably fine?" but "show me the grant, the policy version, and the denial log."
+Classic application security guards requests: authenticate the caller, then authorize the action. An agent platform has a harder problem. The agent is itself an actor, driven by model output that an attacker can influence through prompt injection. So you need more layers than a CRUD app: caller identity, plus capability declarations for code, effect classes for actions, egress control for the network, and approval boundaries for irreversible steps. Every layer also has to answer the audit question afterward with evidence: the grant, the policy version, the denial.
 
 ## Layer one: who is calling — tenant auth
 
-The server's multi-tenancy is namespacing, not filtering. `X-Api-Key` values map to tenants; internally every resource lives under a `{tenant}/` id prefix, so another tenant's thread simply does not exist in your namespace. Cross-tenant probes answer **404, never 403** — existence itself is not leaked (`rusty-server/src/routes.rs`). With no keys configured, the dev server runs open with permissive CORS — loudly warning if bound past loopback. A `production` server (`RUSTY_ENV=production`) inverts the defaults: it refuses to boot without authentication and serves same-origin only unless you explicitly name a cross-origin browser client. Open in dev, hardened in production, and the transition is a refusal to start rather than a config you forgot.
+`X-Api-Key` values map to tenants (`ServerConfig::with_tenant_key(tenant, key)`; `with_api_key` maps to the `default` tenant). Multi-tenancy is namespacing, not filtering. Resources of a named tenant live under a `{tenant}/` id prefix, so another tenant's thread does not exist in your namespace. The `default` tenant is unprefixed. A cross-tenant probe answers `404`, never `403`, so the existence of another tenant's resource is not leaked (`rusty-server/tests/multi_tenant.rs`).
+
+With no authentication configured the server runs in dev mode: every request is allowed and CORS mirrors any origin. If you bind a dev server to a non-loopback address, it logs a warning that it is serving without authentication. Setting `RUSTY_ENV=production` changes the defaults:
+
+- The server refuses to start unless authentication is configured (API keys, principals, or a bootstrap administrator).
+- It serves same-origin only. A cross-origin browser client must be named with `with_cors_allowed_origin`.
+
+Forgetting to configure auth in production produces a boot failure, not an open server.
 
 ## Layer two: what may be installed — the catalog allowlist
 
-The org-level allowlist (`rusty-core/src/allowlist.rs`) sits before every install, update, and rollback of catalog packages. In `curated` mode — the enterprise default — only explicitly listed packages install; in `open` mode, any signed, non-revoked item from a trusted registry proceeds. Two details carry the weight: **revocation overrides every mode** (a revoked package is refused regardless of what the allowlist says), and allowlist entries can carry **capability constraints** — only this package kind, no egress destinations, no secret references — so "allowed" can mean "allowed, but only the harmless shape of it."
+The org-level allowlist (`rusty-core/src/allowlist.rs`) decides which catalog packages may install. It has two modes. In `curated` mode, the default, only listed packages install. In `open` mode, any signed, non-revoked item from a trusted registry may install. Two details matter:
+
+- **Revocation overrides every mode.** A revoked package is refused whatever the allowlist says.
+- **Entries can carry capability constraints.** `CapabilityConstraint` can limit an entry to one package kind, forbid egress destinations, or forbid secret references. "Allowed" can mean "allowed only in its harmless shape".
 
 ## Layer three: what effects may run — the effect kernel
 
-R0.7 moved retry safety from convention into the type system (`rusty-core/src/effects.rs`). The marker traits — `PureEffect`, `ReadOnlyEffect`, `IdempotentEffect`, `CompensatableEffect`, `IrreversibleEffect` — map one-to-one onto the wire `Effect` enum, but they let generic infrastructure *require* a class at the type level instead of re-checking a convention at runtime. The module docs carry a naming honesty worth quoting in substance: the wire enum's `NonIdempotent` states what the runtime can verify — the absence of a declared idempotency story — while `Irreversible` is a claim about the world it cannot check; the typed API uses the second word because it makes the approval boundary legible at a call site.
+R0.7 moved retry safety from convention into the type system (`rusty-core/src/effects.rs`). The marker traits `PureEffect`, `ReadOnlyEffect`, `IdempotentEffect`, `CompensatableEffect`, and `IrreversibleEffect` map one-to-one onto the wire `Effect` enum. Generic code can require a class at compile time instead of checking a convention at runtime. `IrreversibleEffect` maps to the wire variant `NonIdempotent`. The module docs explain the two names: `NonIdempotent` states what the runtime can verify (no declared idempotency story), while `Irreversible` is a claim about the world. The typed API uses the second because it makes the approval boundary visible at the call site.
 
-Two mechanisms close the loop. **Deterministic effect ids** (`derive_effect_id`) give every effect a content-addressed identity from run scope, kind, input hash, and idempotency key — so on recovery the runtime asks "did this exact effect already commit?" and the journal answers. **The approval boundary** (`ApprovalToken`, `admit_irreversible`): an irreversible effect executes only when presented with a token scoped to its derived effect id. The token makes approval a value that must be constructed — not a boolean that can be silently defaulted — and `approved_by` gives attribution. Its honest edge is stated: the token is an in-process proof of explicit decision, so the approval must be journaled to survive a restart (it is), and cross-process attestation is the signed-receipt work of Chapter 07. Admission is opt-in per executor; existing graphs keep pre-R0.7 behavior and stay source-compatible.
+Two mechanisms build on the classes:
+
+- **Deterministic effect ids.** `derive_effect_id(scope, kind, input_hash, idempotency_key)` gives every effect a content-derived identity. On recovery the runtime asks the journal whether that exact effect already committed.
+- **The approval boundary.** `admit_irreversible` lets an irreversible effect run only when it is given an `ApprovalToken` scoped to that effect's derived id. The token is a value you have to construct, not a boolean that can default to true, and `approved_by` records who approved. The token is an in-process proof; attestation across processes is the signed receipt from Chapter 07. The server keeps durable approval records separately (`rusty-server/src/approvals.rs`), and a run waiting for approval parks as an interrupt, so it survives restarts.
+
+Admission is opt-in per executor. Graphs written before R0.7 keep their behavior and still compile.
 
 ## Layer four: what may leave — egress policy
 
-The egress plane (`rusty-core/src/egress.rs`, wired into connector traffic in `rusty-server/src/connectors.rs`) is layer-7 and deny-by-default: destination × protocol × method × path × originating component, and every request that doesn't match an explicit grant is refused with a typed, attributable reason. Core owns the vocabulary and the pure evaluator; the server owns interception and audit emission. The DNS discipline matters as much as the list: checks apply to the resolved address, so a hostname that resolves into a link-local or loopback range doesn't sneak a manifest's good name past the boundary — the SSRF textbook's first lesson, implemented rather than referenced.
+The egress plane (`rusty-core/src/egress.rs`) is a layer-7 policy over destination, method, path, and originating component, with the protocol (REST, WebSocket, MCP) part of the endpoint. Core owns the vocabulary and a pure evaluator. The server intercepts connector traffic and emits the audit record (`rusty-server/src/connectors.rs`). A request that matches no grant is refused with a typed reason naming the rule.
+
+The server builds the policy for you (`docs/connector-standard.md`, rule 11). The allowed hosts are every configured connection's API host and token endpoint, plus whatever the operator adds (`ServerConfig::with_egress_policy`; the demo reads `RUSTY_EGRESS_ALLOW`). Every other host is denied. The policy is recomputed whenever a connection is created, granted, rotated, or revoked. Above it sits the deployment's egress ceiling (`rusty-server/src/egress_ceiling.rs`): the hosts connections may call at all, edited in Studio under Settings → Security → Sites agents may reach. A deployment booted without a ceiling allow-list is open at that level and says so; closing it to the hosts in use is one action. A connection whose host falls outside a closed ceiling is refused with `422 egress_outside_ceiling`.
+
+Checks run on the resolved address, not only the hostname. A name that resolves to a private, loopback, or link-local address is refused unless the grant pins that IP explicitly (`allowed_ips`). This closes the standard SSRF path where a harmless-looking hostname points inside your network.
 
 ## Layer five: where a human must say yes
 
-Approvals thread through the whole stack and they're all the same shape: an explicit, attributable, journaled decision at a declared boundary. An interrupt parks a run for a human (Chapter 02). An `ApprovalToken` admits an irreversible effect. A promotion outside its envelope requires a scoped token (Chapter 05). Studio's Home surfaces them in one place — the decision gate holding irreversible actions. And because approvals are journaled, the answer to "who let this happen?" is a query, not an investigation.
+Approvals appear at several points, and they share one shape: an explicit, attributed, recorded decision at a declared boundary.
+
+- An interrupt parks a run until a person answers (Chapter 02).
+- An `ApprovalToken` admits an irreversible effect.
+- A promotion outside its envelope requires a token scoped to the candidate's promotion effect (Chapter 05).
+
+Because each decision is recorded with its author, "who approved this?" is a lookup.
 
 ```mermaid
 flowchart TB
-    REQ["incoming request"] --> AUTH["tenant auth<br><small>X-Api-Key → namespace, 404 not 403</small>"]
-    PKG["catalog package"] --> ALLOW["allowlist gate<br><small>curated · revocation overrides</small>"]
-    CALL["tool / effect call"] --> ADMIT["effect admission<br><small>class gates · ApprovalToken for irreversible</small>"]
-    OUT["outbound request"] --> EGRESS["egress policy<br><small>deny-by-default, resolved-address checks</small>"]
-    AUTH --> ALL["every decision journaled<br><small>attributable · replayable · receipt-covered</small>"]
+    REQ["incoming request"] --> AUTH["tenant auth<br><small>X-Api-Key → namespace · 404, not 403</small>"]
+    PKG["catalog package"] --> ALLOW["allowlist<br><small>curated by default · revocation overrides</small>"]
+    CALL["tool / effect call"] --> ADMIT["effect admission<br><small>typed classes · ApprovalToken for irreversible</small>"]
+    OUT["connector request"] --> EGRESS["egress policy<br><small>connection hosts only · resolved-address checks</small>"]
+    AUTH --> ALL["attributable decision<br><small>typed denial · recorded</small>"]
     ALLOW --> ALL
     ADMIT --> ALL
     EGRESS --> ALL
 ```
 
 ::: tip Key takeaways
-- The stack: tenant auth (404, never 403), catalog allowlists (revocation overrides everything), typed effect classes, deny-by-default egress with DNS discipline, and approval tokens for the irreversible.
-- Production inverts dev defaults by refusing to boot unauthenticated.
-- Approvals are values that must be constructed, scoped to a derived effect id, and journaled — attribution is structural.
-- Every layer emits evidence; "show me the denial" is always answerable.
+- Tenant auth namespaces resources; cross-tenant probes get `404`, never `403`.
+- `RUSTY_ENV=production` refuses to boot without auth and serves same-origin only.
+- The allowlist defaults to `curated`; revocation overrides every mode.
+- Effect classes are types. An irreversible effect needs an `ApprovalToken` scoped to its derived effect id.
+- Connector egress is limited to the hosts your connections and the operator name, checked on the resolved address, under a deployment-wide ceiling.
+- Every layer refuses with a typed, attributable reason.
 :::
 
 **Further reading**
 
 - [rusty-core/src/effects.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/effects.rs) — the effect kernel and the approval boundary
 - [rusty-core/src/allowlist.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/allowlist.rs) — catalog policy modes and capability constraints
-- [rusty-core/src/egress.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/egress.rs) — the egress evaluator
+- [rusty-core/src/egress.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/egress.rs) — the egress evaluator and DNS preflight
 - [SECURITY.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/SECURITY.md) — the project's security posture and reporting
