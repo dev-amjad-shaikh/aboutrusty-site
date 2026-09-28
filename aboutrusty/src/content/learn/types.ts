@@ -1,65 +1,50 @@
 /**
- * Typed content model for the Learn section.
- * Articles are ordered lists of blocks — no markdown library involved.
- * Inline text supports `code` and **bold** markers, rendered by LearnArticle.
+ * Content model for Learn lessons.
+ *
+ * A lesson is plain data: sections of blocks, rendered by LearnArticle.
+ * Inline text supports `code`, **bold**, and [label](href) markers.
  */
 
-export type HeadingBlock = {
-  type: "heading";
-  level: 2 | 3;
-  text: string;
-};
+export type Block =
+  | { type: "p"; text: string }
+  | { type: "list"; items: string[]; ordered?: boolean }
+  /** A source excerpt. `file` is a repo path; `symbol` names where it lives. */
+  | { type: "code"; file?: string; symbol?: string; code: string; lang?: "rust" | "shell" | "json" | "text" }
+  /** Labelled rows, e.g. the three ways a node can end. */
+  | { type: "rows"; rows: { label: string; tone?: "green" | "red" | "amber" | "plain"; text: string }[] }
+  | { type: "note"; title?: string; text: string }
+  /** A diagram or interactive from src/pages/learn/diagrams.tsx, by name. */
+  | { type: "diagram"; name: string };
 
-export type ParagraphBlock = {
-  type: "paragraph";
-  text: string;
-};
+export interface Section {
+  /** Anchor id, also used by the "On this page" rail. */
+  id: string;
+  /** Heading shown in the article. */
+  title: string;
+  /** Shorter label for the "On this page" rail. */
+  toc?: string;
+  blocks: Block[];
+}
 
-export type ListBlock = {
-  type: "list";
-  ordered?: boolean;
-  items: string[];
-};
-
-export type CodeBlockData = {
-  type: "code";
-  language: string;
-  title?: string;
-  code: string;
-};
-
-export type TableBlock = {
-  type: "table";
-  head: string[];
-  rows: string[][];
-  caption?: string;
-};
-
-export type CalloutVariant = "quote" | "note" | "warning";
-
-export type CalloutBlock = {
-  type: "callout";
-  variant: CalloutVariant;
-  title?: string;
-  text: string;
-};
-
-export type ContentBlock =
-  | HeadingBlock
-  | ParagraphBlock
-  | ListBlock
-  | CodeBlockData
-  | TableBlock
-  | CalloutBlock;
-
-export interface Article {
+export interface Lesson {
+  /** Chapter id in the 11-part course, e.g. "2.3". */
+  id: string;
+  /** URL segment under /learn/. */
   slug: string;
   title: string;
-  description: string;
-  readingTime: string;
-  /** Format kicker shown above the card title on the Learn index. */
-  kicker?: string;
-  /** Custom line for the end-of-article playground CTA panel. */
-  playgroundCta?: string;
-  blocks: ContentBlock[];
+  minutes: number;
+  /** Main source file shown in the lesson meta line. */
+  source: string;
+  /** Chapter ids to read first. */
+  before?: string[];
+  summary: string;
+  /** The three "You'll learn / try / read" cells. */
+  glance: { learn: string; try: string; read: string };
+  /** True when the lesson has a hands-on interactive (shown on the hub). */
+  interactive?: boolean;
+  sections: Section[];
+  takeaways: string[];
+  quiz: { q: string; a: string }[];
+  sources: { path: string; what: string }[];
+  related?: { label: string; href: string }[];
 }

@@ -145,13 +145,13 @@ export function Hero() {
           exactly. You deploy it as a single binary.
         </p>
         <div className="flex flex-wrap gap-3">
-          <a
-            href="/guide/15-quickstart.html"
+          <Link
+            to="/docs"
             className="rounded-[9px] bg-primary px-[22px] py-[13px] text-[16px] font-medium text-primary-foreground no-underline transition-colors hover:bg-[#fb9a3f]"
             style={{ boxShadow: "0 10px 30px -10px rgba(240,134,43,.8)" }}
           >
             Get started
-          </a>
+          </Link>
           <Link
             to="/learn"
             className="rounded-[9px] border px-[22px] py-[13px] text-[16px] text-[#ece0d5] no-underline backdrop-blur-[10px] transition-colors hover:border-[rgba(236,150,96,.5)] hover:text-[#fff3ea]"

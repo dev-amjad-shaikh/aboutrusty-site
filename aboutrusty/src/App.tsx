@@ -8,24 +8,16 @@ import { ConceptsPage } from "./pages/ConceptsPage";
 import { ReleasesPage } from "./pages/ReleasesPage";
 import { ResearchPage } from "./pages/ResearchPage";
 import { PlaygroundPage } from "./pages/playground/PlaygroundPage";
+import { BookPage } from "./pages/book/BookPage";
 import { NotFound } from "./pages/NotFound";
-
-// The guide is a VitePress site built into public/guide at deploy time. Static
-// hosts serve it before the SPA fallback, so production never reaches this
-// route — it exists so `npm run dev` (where Vite falls back to index.html for
-// /guide/) hands the browser to the real book.
-function GuideRedirect() {
-  window.location.replace("/guide/index.html");
-  return null;
-}
 
 export default function App() {
   return (
     <Routes>
       <Route element={<SiteLayout />}>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/guide" element={<GuideRedirect />} />
-        <Route path="/guide/*" element={<GuideRedirect />} />
+        <Route path="/guide" element={<BookPage />} />
+        <Route path="/guide/:file" element={<BookPage />} />
         <Route path="/docs" element={<DocsPage />} />
         <Route path="/concepts" element={<ConceptsPage />} />
         <Route path="/releases" element={<ReleasesPage />} />

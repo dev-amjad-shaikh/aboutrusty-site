@@ -1,45 +1,32 @@
-/** A lesson reference from the design's course numbering to the guide book. */
-export const LESSON_LINKS: Record<string, string> = {
-  "1": "/guide/01-the-problem.html",
-  "2.1": "/guide/02-mental-model.html",
-  "2.2": "/guide/02-mental-model.html",
-  "2.3": "/guide/02-mental-model.html",
-  "2.4": "/guide/02-mental-model.html",
-  "2.5": "/guide/02-mental-model.html",
-  "2.6": "/guide/02-mental-model.html",
-  "2.8": "/guide/10-durability.html",
-  "2.9": "/guide/10-durability.html",
-  "2.10": "/guide/10-durability.html",
-  "2.13": "/guide/11-sub-agents.html",
-  "3.1": "/guide/10-durability.html",
-  "4.1": "/guide/03-journals.html",
-  "4.2": "/guide/12-policy-security.html",
-  "4.4": "/guide/03-journals.html",
-  "4.5": "/guide/03-journals.html",
-  "4.6": "/guide/12-policy-security.html",
-  "5.2": "/guide/10-durability.html",
-  "6.1": "/guide/11-sub-agents.html",
-  "6.2": "/guide/11-sub-agents.html",
-  "7.1": "/guide/05-learning-loop.html",
-  "7.3": "/guide/05-learning-loop.html",
-  "7.5": "/guide/05-learning-loop.html",
-  "7.6": "/guide/05-learning-loop.html",
-  "7.7": "/guide/05-learning-loop.html",
-  "7.8": "/guide/08-blueprints-agents.html",
-  "8.1": "/guide/07-capsules.html",
-  "8.2": "/guide/07-capsules.html",
-  "8.3": "/guide/12-policy-security.html",
-  "9.1": "/guide/22-deploy-operate.html",
-  "9.2": "/guide/22-deploy-operate.html",
-  "9.3": "/guide/22-deploy-operate.html",
-  "9.4": "/guide/22-deploy-operate.html",
-  "9.5": "/guide/22-deploy-operate.html",
-  "10.1": "/guide/09-tools-connectors.html",
-  "10.2": "/guide/06-skills.html",
-  "10.3": "/guide/04-memory.html",
-  "10.4": "/guide/02-mental-model.html",
-};
+import { CHAPTERS } from "./learn/course";
 
-export function lessonHref(ref: string): string {
-  return LESSON_LINKS[ref] ?? "/guide/index.html";
+/**
+ * Links into the Learn course by chapter id (the 11-part numbering on /learn,
+ * e.g. "2.3"). A chapter with a written lesson opens it; a chapter covered by
+ * a section of another lesson opens that section; every other chapter opens
+ * the book chapter that covers the topic today.
+ */
+
+export type LessonKind = "lesson" | "section" | "book";
+
+function find(id: string) {
+  return CHAPTERS.find((c) => c.id === id);
+}
+
+export function lessonHref(id: string): string {
+  const c = find(id);
+  if (!c) return "/learn";
+  if (c.lesson) return `/learn/${c.lesson}`;
+  if (c.within) return `/learn/${c.within}`;
+  return `/guide/${c.book}`;
+}
+
+export function lessonTitle(id: string): string | undefined {
+  return find(id)?.t;
+}
+
+export function lessonKind(id: string): LessonKind | undefined {
+  const c = find(id);
+  if (!c) return undefined;
+  return c.lesson ? "lesson" : c.within ? "section" : "book";
 }

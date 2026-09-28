@@ -1,34 +1,34 @@
-import type { Article } from "./types";
-import { architecture } from "./architecture";
-import { serverQuickstart } from "./serverQuickstart";
-import { humanInTheLoop } from "./humanInTheLoop";
-import { flightRecorder } from "./flightRecorder";
-import { durableWorkFabric } from "./durableWorkFabric";
-import { capabilityPlanes } from "./capabilityPlanes";
-import { studio } from "./studio";
-import { roadmapAndStability } from "./roadmapAndStability";
+import type { Lesson } from "./types";
+import { superStepLoop } from "./superStepLoop";
+import { checkpoints } from "./checkpoints";
+import { interrupts } from "./interrupts";
+import { crashRecovery } from "./crashRecovery";
+import { deterministicReplay } from "./deterministicReplay";
+import { canaryAndShadow } from "./canaryAndShadow";
 
-/** Articles in display order — index badges 01–08 derive from this order. */
-export const articles: Article[] = [
-  architecture,
-  serverQuickstart,
-  humanInTheLoop,
-  flightRecorder,
-  durableWorkFabric,
-  capabilityPlanes,
-  studio,
-  roadmapAndStability,
+/** Written lessons, in course order. */
+export const lessons: Lesson[] = [
+  superStepLoop,
+  checkpoints,
+  interrupts,
+  crashRecovery,
+  deterministicReplay,
+  canaryAndShadow,
 ];
 
-export function getArticle(slug: string | undefined): Article | undefined {
-  return articles.find((a) => a.slug === slug);
+export function getLesson(slug: string | undefined): Lesson | undefined {
+  return lessons.find((l) => l.slug === slug);
 }
 
-export function getAdjacent(slug: string): {
-  prev?: Article;
-  next?: Article;
-} {
-  const i = articles.findIndex((a) => a.slug === slug);
-  if (i === -1) return {};
-  return { prev: articles[i - 1], next: articles[i + 1] };
-}
+/** Old article slugs from the previous Learn section, mapped to where their
+ * topic lives now. Keeps links from elsewhere on the site working. */
+export const LEGACY_SLUGS: Record<string, string> = {
+  architecture: "/learn/super-step-loop",
+  "human-in-the-loop": "/learn/interrupts",
+  "flight-recorder": "/learn/deterministic-replay",
+  "durable-work-fabric": "/learn/crash-recovery",
+  "server-quickstart": "/docs",
+  studio: "/docs",
+  "roadmap-and-stability": "/releases",
+  "capability-planes": "/guide/06-skills.html",
+};

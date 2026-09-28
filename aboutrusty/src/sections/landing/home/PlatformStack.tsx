@@ -29,7 +29,7 @@ const LAYERS: { name: string; pkg: string; desc: string }[] = [
   },
 ];
 
-/** 04 · Platform — the isometric stack of layers, auto-cycling, hover to pin. */
+/** 05 · Platform — the isometric stack of layers, auto-cycling, hover to pin. */
 export function PlatformStack() {
   const [layer, setLayer] = useState(0);
   const holdRef = useRef(false);
@@ -53,7 +53,7 @@ export function PlatformStack() {
       }}
     >
       <div className="flex flex-col gap-[18px]">
-        <Kicker>04 · Platform</Kicker>
+        <Kicker>05 · Platform</Kicker>
         <SectionTitle>Everything you need to run agents</SectionTitle>
         <div className="flex min-h-[150px] flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-3">
@@ -78,7 +78,7 @@ export function PlatformStack() {
           for OpenTelemetry tracing.
         </span>
       </div>
-      <div className="flex justify-center py-5" style={{ perspective: 1400 }}>
+      <div className="flex justify-center overflow-hidden py-5" style={{ perspective: 1400 }}>
         <div
           className="relative h-[430px] w-[min(100%,460px)]"
           style={{

@@ -11,7 +11,7 @@ const VIEWS: { label: string; key: string; caption: string }[] = [
   { label: "Observability", key: "analytics", caption: "Runs, latency, cost, and errors across all agents." },
 ];
 
-/** 05 · Studio — the real workspace mock in a tilting browser frame. */
+/** 06 · Studio — the real workspace mock in a tilting browser frame. */
 export function StudioShowcase() {
   const [view, setView] = useState(0);
   const [scale, setScale] = useState(0.6);
@@ -57,7 +57,7 @@ export function StudioShowcase() {
       style={{ borderColor: "rgba(236,150,96,.10)" }}
     >
       <div className="flex max-w-[640px] flex-col gap-3.5">
-        <Kicker>05 · Studio</Kicker>
+        <Kicker>06 · Studio</Kicker>
         <SectionTitle>See what your agents are doing</SectionTitle>
         <p className="m-0 text-[17px] leading-[1.6] text-[#cfc3b8]">
           Rusty Studio is where you build agents, connect systems, and review

@@ -1,18 +1,9 @@
-/** Releases — the platform timeline, transcribed from the design. */
-const RELEASES: { tag: string; ver: string; date: string; name: string; body: string }[] = [
-  { tag: "main", ver: "Unreleased", date: "", name: "On main", body: "Connectors, skills, knowledge sources, goals, the verifier suite, campaigns, and Studio v4. MSRV raised to Rust 1.87." },
-  { tag: "R0.12", ver: "v0.13.0", date: "Aug 11, 2026", name: "Operations Plane", body: "Run artifacts with versions, previews, and retention. Deployment revisions, environments, and environment secrets. Release gates, canary and shadow deployments, and a health endpoint." },
-  { tag: "R0.11", ver: "v0.12.0", date: "Aug 10, 2026", name: "Extension Plane", body: "Registry for prompts and configuration with per-environment promotion and rollback. Credential broker: tools receive short-lived handles instead of raw credentials. OAuth flows and middleware composition." },
-  { tag: "R0.10", ver: "v0.11.0", date: "Aug 9, 2026", name: "Adaptation", body: "Learned retry and timeout policies, evaluated in a deterministic runtime twin before promotion. static-v0 remains the default policy. Drift endpoint at GET /policy/drift." },
-  { tag: "R0.9", ver: "v0.10.0", date: "Aug 9, 2026", name: "Capsules", body: "Capsules for untrusted code with declared capabilities and resource budgets. Cedar authorization. Signed run receipts. MCP and A2A in both directions." },
-  { tag: "R0.8", ver: "v0.9.0", date: "Aug 9, 2026", name: "Rusty Learn", body: "Scoped memory records, human corrections, candidates, promotion with approvals, and rollback. Executor policy registry. rusty-eval added as a server dependency." },
-  { tag: "R0.7", ver: "v0.8.0", date: "Aug 8, 2026", name: "Agent Fabric", body: "Durable agents with mailboxes and supervision. Coordination patterns: delegate, fan-out, race, quorum. Effect types enforced at compile time. Delta checkpoints: a 1000-step, 1 MB run shrinks from 1.05 GB to 33 MB on disk." },
-  { tag: "R0.6", ver: "v0.7.0", date: "Aug 7, 2026", name: "Durable Work", body: "Durable task queue with leases, retries, and dead-lettering. Cancellation. Transactional outbox and effect receipts. rusty-worker ActivityWorker." },
-  { tag: "R0.5", ver: "v0.6.0", date: "Aug 7, 2026", name: "Flight Recorder", body: "Run journal, deterministic clock and RNG, exact replay." },
-  { tag: "R0.4", ver: "v0.4.0", date: "Aug 5, 2026", name: "Time Travel", body: "Fork and replay from any checkpoint." },
-  { tag: "R0.3", ver: "v0.3.0", date: "Aug 5, 2026", name: "Interop", body: "HTTP server, Python and TypeScript clients." },
-];
+import { Link } from "react-router";
+import { CHANGELOG_URL, RELEASES, REPO } from "@/content/releases";
+import { lessonHref } from "@/content/lessonLinks";
+import { ReleaseTimeline, releaseAnchor } from "@/components/diagrams/research/ReleaseTimeline";
 
+/** Releases — the platform timeline, written from CHANGELOG.md. */
 export function ReleasesPage() {
   return (
     <main className="mx-auto max-w-[960px] px-7">
@@ -26,41 +17,86 @@ export function ReleasesPage() {
         <p className="m-0 max-w-[640px] text-[18px] leading-[1.6] text-[#cfc3b8]">
           Release notes for the Rusty platform. Crates are versioned
           independently. Full history in{" "}
-          <a href="https://github.com/dev-amjad-shaikh/rusty/blob/main/CHANGELOG.md">
+          <a href={CHANGELOG_URL} target="_blank" rel="noreferrer" className="text-primary no-underline transition-colors hover:text-[#fb9a3f]">
             CHANGELOG.md
           </a>
           .
         </p>
+        <div
+          className="mt-4 rounded-[14px] border px-3 pb-4 pt-5 sm:px-6"
+          style={{ borderColor: "rgba(236,150,96,.14)", background: "rgba(255,236,214,.02)" }}
+        >
+          <ReleaseTimeline releases={RELEASES} />
+        </div>
       </section>
-      <section className="flex flex-col pb-10">
+
+      <section className="relative flex flex-col pb-20">
+        <div
+          aria-hidden="true"
+          className="absolute bottom-20 left-[5px] top-0 w-px"
+          style={{ background: "linear-gradient(180deg,rgba(245,183,116,.45),rgba(240,134,43,.4) 20%,rgba(236,150,96,.12))" }}
+        />
         {RELEASES.map((r) => (
-          <div
+          <article
             key={r.tag}
-            className="grid gap-8 border-t py-[30px] sm:grid-cols-[150px_minmax(0,1fr)]"
+            id={releaseAnchor(r.tag)}
+            className="relative ml-7 grid scroll-mt-24 gap-3 border-t py-[30px] sm:ml-9 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-8"
             style={{ borderColor: "rgba(236,150,96,.12)" }}
           >
-            <div className="flex flex-col gap-1.5 max-sm:flex-row max-sm:gap-3">
+            <span
+              aria-hidden="true"
+              className="absolute left-[-28px] top-[36px] h-[11px] w-[11px] rounded-full sm:left-[-36px]"
+              style={
+                r.tag === "main"
+                  ? { border: "1px solid #f5b774", background: "#070506" }
+                  : { background: "#f0862b", boxShadow: "0 0 10px rgba(240,134,43,.4)" }
+              }
+            />
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 sm:flex-col sm:flex-nowrap">
               <span
                 className="font-code text-[14px]"
                 style={{ color: r.tag === "main" ? "#f5b774" : "#f0862b" }}
               >
                 {r.tag}
               </span>
-              <span className="text-[14px] text-[#a39a91]">{r.ver}</span>
-              <span className="text-[14px] text-[#8b837b]">{r.date}</span>
+              <span className="text-[14px] text-[#a39a91]">{r.version}</span>
+              {r.date && <span className="text-[14px] text-[#8b837b]">{r.date}</span>}
             </div>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex min-w-0 flex-col gap-2.5">
               <h2 className="m-0 text-[26px] font-light tracking-[-0.01em] text-[#f7ece4]">
                 {r.name}
               </h2>
-              <p className="m-0 text-[16.5px] leading-[1.65] text-[#cfc3b8]" style={{ textWrap: "pretty" }}>
+              <p
+                className="m-0 text-[16.5px] leading-[1.65] text-[#cfc3b8]"
+                style={{ textWrap: "pretty" }}
+              >
                 {r.body}
               </p>
-              <a href="/guide/appendix-c-releases.html" className="text-[14.5px]">
-                Release history in the guide →
-              </a>
+              {r.proof && (
+                <p className="m-0 text-[14px] leading-[1.6] text-[#a39a91]">
+                  Release proof:{" "}
+                  <a
+                    href={`${REPO}/blob/main/${r.proof}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all font-code text-[13px] text-primary no-underline transition-colors hover:text-[#fb9a3f]"
+                  >
+                    {r.proof}
+                  </a>
+                </p>
+              )}
+              {r.lessons.length > 0 && (
+                <p className="m-0 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[14.5px] text-[#a39a91]">
+                  <span>Learn</span>
+                  {r.lessons.map((id) => (
+                    <Link key={id} to={lessonHref(id)} className="font-code text-[13.5px] text-primary no-underline transition-colors hover:text-[#fb9a3f]">
+                      {id}
+                    </Link>
+                  ))}
+                </p>
+              )}
             </div>
-          </div>
+          </article>
         ))}
       </section>
     </main>
