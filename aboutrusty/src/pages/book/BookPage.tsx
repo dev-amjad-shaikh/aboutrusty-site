@@ -116,7 +116,9 @@ function Sidebar({ current }: { current?: string }) {
 }
 
 function BookIndex() {
-  useEffect(() => window.scrollTo({ top: 0, behavior: "instant" }), []);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
   return (
     <div className="mx-auto flex max-w-[1240px] items-start gap-12 px-4 sm:px-7">
       <Sidebar />
