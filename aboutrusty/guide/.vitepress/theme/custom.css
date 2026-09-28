@@ -1,0 +1,219 @@
+/**
+ * Inside Rusty — the book's skin.
+ *
+ * The palette is the Rusty design language (the same tokens Studio ships):
+ * oxidised dark canvas, one ember accent, cream ink. Serif display headings
+ * mark this as a book rather than an admin console; body text stays sans.
+ * Font stacks are system-resident on purpose: the site must build and
+ * render without a network fetch.
+ */
+
+:root {
+  /* Rusty tokens */
+  --rusty-bg-page: #0d0a09;
+  --rusty-bg-canvas: #110c0a;
+  --rusty-bg-surface: #1a1310;
+  --rusty-bg-tint: #1f1713;
+  --rusty-ink-900: #f7ece4;
+  --rusty-ink-800: #ece0d5;
+  --rusty-ink-700: #ddd0c4;
+  --rusty-ink-600: #cbb3a2;
+  --rusty-ink-500: #b8b0a8;
+  --rusty-cream: #fff3ea;
+  --rusty-brand: #e8742a;
+  --rusty-brand-strong: #f0862b;
+  --rusty-line: rgba(236, 150, 96, 0.16);
+  --rusty-line-soft: rgba(236, 150, 96, 0.09);
+
+  --rusty-font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino,
+    'Book Antiqua', Georgia, serif;
+  --rusty-font-sans: 'Outfit', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+  --rusty-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  /* VitePress variable overrides (dark-only site) */
+  --vp-c-bg: var(--rusty-bg-page);
+  --vp-c-bg-alt: var(--rusty-bg-canvas);
+  --vp-c-bg-elv: var(--rusty-bg-surface);
+  --vp-c-bg-soft: var(--rusty-bg-tint);
+
+  --vp-c-text-1: var(--rusty-ink-900);
+  --vp-c-text-2: var(--rusty-ink-700);
+  --vp-c-text-3: var(--rusty-ink-500);
+
+  --vp-c-brand-1: var(--rusty-brand-strong);
+  --vp-c-brand-2: var(--rusty-brand);
+  --vp-c-brand-3: #b9541a;
+  --vp-c-brand-soft: rgba(240, 134, 43, 0.14);
+
+  --vp-c-tip-1: var(--rusty-brand-strong);
+  --vp-c-tip-2: var(--rusty-brand);
+  --vp-c-tip-3: #b9541a;
+  --vp-c-tip-soft: rgba(240, 134, 43, 0.12);
+
+  --vp-c-divider: var(--rusty-line);
+  --vp-c-gutter: var(--rusty-line-soft);
+
+  --vp-font-family-base: var(--rusty-font-sans);
+  --vp-font-family-mono: var(--rusty-font-mono);
+
+  --vp-sidebar-bg-color: var(--rusty-bg-canvas);
+  --vp-nav-bg-color: rgba(13, 10, 9, 0.82);
+
+  --vp-code-bg: var(--rusty-bg-tint);
+  --vp-code-block-bg: #141010;
+  --vp-code-line-highlight-color: rgba(240, 134, 43, 0.1);
+
+  --vp-home-hero-name-color: var(--rusty-cream);
+}
+
+html,
+body {
+  background-color: var(--rusty-bg-page);
+}
+
+::selection {
+  background: rgba(240, 134, 43, 0.28);
+  color: var(--rusty-cream);
+}
+
+/* ── Type: the book voice ─────────────────────────────────── */
+
+.vp-doc h1,
+.vp-doc h2,
+.VPHome .name,
+.VPHero .name {
+  font-family: var(--rusty-font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--rusty-cream);
+}
+
+.vp-doc h1 {
+  font-size: 2.35rem;
+  line-height: 1.2;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--rusty-line);
+}
+
+.vp-doc h2 {
+  margin-top: 2.6em;
+  border-top: none;
+  padding-top: 0;
+}
+
+.vp-doc h3 {
+  color: var(--rusty-ink-900);
+}
+
+/* Chapter eyebrows — the small mono kicker above an h1, written in
+   markdown as a paragraph of class .chapter-eyebrow */
+.chapter-eyebrow {
+  font-family: var(--rusty-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rusty-brand-strong);
+  margin-bottom: -0.6em;
+}
+
+/* Stronger, calmer body copy */
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.75;
+}
+
+.vp-doc a {
+  color: var(--rusty-brand);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rusty-line-soft);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.vp-doc a:hover {
+  color: var(--rusty-brand-strong);
+  border-bottom-color: var(--rusty-brand-strong);
+}
+
+/* Code inline and blocks */
+.vp-doc :not(pre) > code {
+  color: #ffc7a6;
+  background: rgba(240, 134, 43, 0.1);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+/* Custom containers read as book marginalia */
+.vp-doc .custom-block {
+  border-radius: 10px;
+  border: 1px solid var(--rusty-line-soft);
+}
+
+.vp-doc .custom-block-title {
+  font-family: var(--rusty-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Prev / next pager */
+.pager-link {
+  border: 1px solid var(--rusty-line-soft);
+  border-radius: 10px;
+  transition: border-color 0.2s ease;
+}
+
+.pager-link:hover {
+  border-color: var(--rusty-brand-strong);
+}
+
+.pager-link .title {
+  font-family: var(--rusty-font-display);
+}
+
+/* Sidebar */
+.VPSidebarItem .text {
+  font-weight: 400;
+}
+
+.VPSidebarItem.is-active .item .text,
+.VPSidebarItem .item:hover .text {
+  color: var(--rusty-brand-strong);
+}
+
+/* Home hero */
+.VPHome .name {
+  font-size: 3rem;
+}
+
+.VPHome .tagline {
+  color: var(--rusty-ink-600);
+}
+
+/* Tables — quiet rules, warm header */
+.vp-doc table {
+  font-size: 0.92rem;
+}
+
+.vp-doc th {
+  font-family: var(--rusty-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rusty-ink-600);
+  background: var(--rusty-bg-tint);
+}
+
+.vp-doc tr:nth-child(2n) {
+  background: rgba(255, 236, 214, 0.025);
+}
+
+/* Mermaid figures sit on the canvas tier */
+.mermaid {
+  background: var(--rusty-bg-canvas);
+  border: 1px solid var(--rusty-line-soft);
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1.2rem 0;
+}
