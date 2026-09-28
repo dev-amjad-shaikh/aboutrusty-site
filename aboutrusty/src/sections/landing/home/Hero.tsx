@@ -114,8 +114,8 @@ export function Hero() {
 
       {/* copy */}
       <div className="relative z-[2] mx-auto flex max-w-[1240px] flex-col gap-[22px] px-7 pt-[88px]">
-        <a
-          href="/guide/appendix-c-releases.html"
+        <Link
+          to="/releases"
           className="flex items-center gap-2.5 self-start rounded-full border py-[5px] pl-[5px] pr-3.5 text-[14px] text-[#ffd0b3] no-underline backdrop-blur-[10px] transition-colors hover:text-[#ffe2cb]"
           style={{ borderColor: "rgba(240,134,43,.3)", background: "rgba(20,12,9,.7)" }}
         >
@@ -123,7 +123,7 @@ export function Hero() {
             R0.12
           </span>
           Operations Plane is out. Read the release notes →
-        </a>
+        </Link>
         <h1
           className="m-0 max-w-[640px] font-light text-[#f7ece4]"
           style={{

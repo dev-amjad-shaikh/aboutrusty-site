@@ -2,8 +2,9 @@ import { Link, NavLink, Outlet } from "react-router";
 
 const navItems = [
   { to: "/", label: "Overview", end: true },
-  { to: "/guide", label: "Guide", end: false },
+  { to: "/docs", label: "Docs", end: false },
   { to: "/learn", label: "Learn", end: false },
+  { to: "/guide", label: "Guide", end: false },
   { to: "/playground", label: "Playground", end: false },
 ];
 
@@ -27,8 +28,17 @@ const footerColumns: {
     links: [
       { label: "Overview", to: "/" },
       { label: "Guide", to: "/guide" },
-      { label: "Learn", to: "/learn" },
       { label: "Playground", to: "/playground" },
+    ],
+  },
+  {
+    heading: "Learn",
+    links: [
+      { label: "Docs", to: "/docs" },
+      { label: "Learn", to: "/learn" },
+      { label: "Concepts", to: "/concepts" },
+      { label: "Research", to: "/research" },
+      { label: "Releases", to: "/releases" },
     ],
   },
   {
