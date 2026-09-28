@@ -3,6 +3,7 @@ import { Github } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Overview", end: true },
+  { to: "/guide", label: "Guide", end: false },
   { to: "/learn", label: "Learn", end: false },
   { to: "/playground", label: "Playground", end: false },
 ];
