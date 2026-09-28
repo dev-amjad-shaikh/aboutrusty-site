@@ -74,8 +74,9 @@ function superStep(
   state: Channels,
   cps: Checkpoint[],
   label?: string,
+  nextOverride?: NodeName[],
 ): { frames: Frame[]; state: Channels; cps: Checkpoint[] } {
-  const next = ROUTE[step] ?? [];
+  const next = nextOverride ?? ROUTE[step] ?? [];
   const lanes = (st: LaneStatus) => active.map((node) => ({ node, status: st, write: WRITES[node].text }));
   const merged = apply(state, active);
   const cp: Checkpoint = { n: cps.length + 1, step, next };
@@ -250,9 +251,10 @@ function build(scenario: Scenario): Frame[] {
     lanes: [],
     pending: null,
     status: "restarting",
-    caption: "A new process starts against the same store and loads the thread's latest checkpoint: step 1, next [write]. Steps 0 and 1 do not run again.",
+    caption: "A new process starts against the same store and loads the thread's latest checkpoint: step 1, next [write]. plan, fetch, and search do not run again. The restored run keeps the checkpoint's step number, so write runs as step 1.",
   });
-  const s3 = superStep(2, ["write"], r.state, r.cps, "after restart");
+  // A restored run keeps the checkpoint's step number, so write runs as step 1 again.
+  const s3 = superStep(1, ["write"], r.state, r.cps, "after restart", []);
   f.push(...s3.frames, doneFrame(s3.state, s3.cps));
   return f;
 }

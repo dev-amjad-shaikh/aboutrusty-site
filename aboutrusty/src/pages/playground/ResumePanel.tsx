@@ -1,80 +1,116 @@
 import { useState } from "react";
-import { ShieldQuestion } from "lucide-react";
 import { CodeBlock } from "@/components/shared/CodeBlock";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { RESUME_SNIPPET } from "./engine";
-import { InstrumentHeader } from "./chrome";
+import { RESUME_SNIPPET, type Checkpoint, type ThreadSim } from "./engine";
+import { Btn, Json } from "./chrome";
+import { C } from "./tokens";
 
-interface ResumePanelProps {
-  interrupt: unknown;
-  checkpointId: string | undefined;
-  onResume: (value: unknown) => void;
+function isHalt(v: unknown): boolean {
+  return typeof v === "object" && v !== null && "rusty.halted" in v;
 }
 
 /**
- * The run is parked: the approve node returned Err(ctx.interrupt(payload)),
- * the in-flight step was discarded wholesale, and the suspension checkpoint
- * re-scheduled the entire active set. Type the human's decision and resume —
- * the node re-executes from its start with ctx.resume_value() set.
+ * What the caller does next when a run stops early: answer an interrupt,
+ * continue past the step ceiling, or retry after an error.
  */
-export function ResumePanel({ interrupt, checkpointId, onResume }: ResumePanelProps) {
-  const [reviewer, setReviewer] = useState("alice");
+export function ResumePanel({
+  thread,
+  latest,
+  fault,
+  onResume,
+  onContinue,
+}: {
+  thread: ThreadSim;
+  latest: Checkpoint | undefined;
+  /** The option that makes the step fail, while it is still on. */
+  fault: string | null;
+  onResume: (value: unknown) => void;
+  onContinue: () => void;
+}) {
+  const [reviewer, setReviewer] = useState("amjad");
 
-  const resume = (approved: boolean) => {
-    onResume({ approved, reviewer: reviewer.trim() || "you" });
-  };
+  if (thread.status === "error" && thread.error) {
+    return (
+      <Box tone={C.red} title={`Run failed · ${thread.error.kind}`}>
+        <p className="m-0 break-words font-code text-[12px] leading-[1.6] text-[#f09a80]">{thread.error.message}</p>
+        <p className="m-0 text-[15px] leading-[1.6] text-[#cfc3b8]">
+          The failed step left no trace in the state and wrote no checkpoint.{" "}
+          {latest
+            ? `The latest checkpoint is still ${latest.id} at step ${latest.step}, so a new run with that checkpoint id starts the failed step again.`
+            : "There is no checkpoint yet, so a new run starts from the entry point."}
+          {fault && ` Uncheck "${fault}" first, or the step fails the same way.`}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn primary onClick={onContinue}>
+            {latest ? `Retry from ${latest.id}` : "Run again"}
+          </Btn>
+          {latest && <code className="break-all font-code text-[11.5px] text-[#8b837b]">RunConfig::new("{thread.id}").with_checkpoint_id("{latest.id}")</code>}
+        </div>
+      </Box>
+    );
+  }
+
+  if (thread.status !== "interrupted") return null;
+
+  if (isHalt(thread.interrupt)) {
+    return (
+      <Box tone={C.amber} title="Suspended at the step ceiling">
+        <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-code text-[11.5px] leading-[1.55] text-[#cfc3b8]">
+          <Json value={thread.interrupt} />
+        </pre>
+        <p className="m-0 text-[15px] leading-[1.6] text-[#cfc3b8]">
+          The run kept its work. Checkpoint {latest?.id} holds the state and the next-node set, and a new run from it gets a fresh
+          step budget.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn primary onClick={onContinue}>
+            Continue from {latest?.id}
+          </Btn>
+          <code className="break-all font-code text-[11.5px] text-[#8b837b]">RunConfig::new("{thread.id}").with_checkpoint_id("{latest?.id}")</code>
+        </div>
+      </Box>
+    );
+  }
 
   return (
-    <Card className="gap-0 rounded-lg border-warning/40 bg-warning/10 py-0">
-      <InstrumentHeader
-        label={
-          <span className="flex items-center gap-2">
-            <ShieldQuestion size={13} className="text-warning" />
-            Interrupt — human input required
-          </span>
-        }
-        description="An interrupt is a transaction abort with a receipt: the step's writes were discarded and the suspension checkpoint re-scheduled the whole active set. This is where the run is parked."
-        tone="warning"
-        pulse
-        className="border-warning/20"
-        right={
-          <Badge
-            variant="outline"
-            className="border-warning/40 bg-warning/10 font-code text-[10px] text-warning"
-          >
-            {checkpointId ?? "suspended"}
-          </Badge>
-        }
-      />
-      <CardContent className="space-y-4 py-4">
-        <pre className="bg-code overflow-x-auto rounded-lg border border-white/10 p-3 font-code text-[11px] leading-relaxed">
-          {JSON.stringify(interrupt, null, 2)}
-        </pre>
-
-        <CodeBlock code={RESUME_SNIPPET} language="rust" title="approve node — check ctx.resume_value() FIRST" />
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
+    <Box tone={C.amber} title={`Interrupted · waiting for a person · checkpoint ${latest?.id ?? ""}`}>
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-code text-[11.5px] leading-[1.55] text-[#cfc3b8]">
+        <Json value={thread.interrupt} />
+      </pre>
+      <p className="m-0 text-[15px] leading-[1.6] text-[#cfc3b8]">
+        Nothing from step {latest?.step} was kept, including the audit entry log_request wrote. The suspension checkpoint schedules
+        both nodes again. When you answer, both run from the start and both see your answer in{" "}
+        <code className="font-code text-[13.5px] text-[#ffc7a6]">ctx.resume_value()</code>.
+      </p>
+      <CodeBlock code={RESUME_SNIPPET} language="rust" title="the approve node" />
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 font-code text-[12px] text-[#8b837b]">
+          reviewer
+          <input
             value={reviewer}
             onChange={(e) => setReviewer(e.target.value)}
-            placeholder="reviewer name"
-            className="h-8 w-36 border-border bg-background font-code text-xs focus-visible:ring-primary/40"
-            aria-label="Reviewer name"
+            className="w-32 rounded-lg border bg-transparent px-2.5 py-1.5 font-code text-[12.5px] text-[#f7ece4] outline-none focus:border-[rgba(240,134,43,.6)]"
+            style={{ borderColor: "rgba(236,150,96,.3)" }}
           />
-          <Button size="sm" onClick={() => resume(true)}>
-            Resume — approve
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => resume(false)}>
-            Resume — reject
-          </Button>
-          <span className="font-code text-[10px] text-muted-foreground">
-            sent as RunConfig::with_resume(&#123;"approved": …&#125;)
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+        </label>
+        <Btn primary onClick={() => onResume({ approved: true, reviewer: reviewer.trim() || "reviewer" })}>
+          Approve
+        </Btn>
+        <Btn onClick={() => onResume({ approved: false, reviewer: reviewer.trim() || "reviewer" })}>Reject</Btn>
+      </div>
+      <code className="break-all font-code text-[11.5px] text-[#8b837b]">
+        RunConfig::new("{thread.id}").with_resume(json!({"{"}"approved": …{"}"}))
+      </code>
+    </Box>
+  );
+}
+
+function Box({ tone, title, children }: { tone: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 rounded-xl border p-4" style={{ borderColor: `${tone}66`, background: `${tone}0d` }}>
+      <span className="font-code text-[10.5px] uppercase tracking-[0.14em]" style={{ color: tone }}>
+        {title}
+      </span>
+      {children}
+    </div>
   );
 }

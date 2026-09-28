@@ -1,84 +1,51 @@
-import { GitBranch } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import type { ThreadSim } from "./engine";
-import { InstrumentHeader } from "./chrome";
+import { Dot, Label } from "./chrome";
+import { C, STATUS_COLOR } from "./tokens";
 
-interface BranchesPanelProps {
+/** Every thread in the session: the original and its forks. */
+export function BranchesPanel({
+  threads,
+  activeId,
+  disabled,
+  onSelect,
+}: {
   threads: ThreadSim[];
   activeId: string;
+  disabled: boolean;
   onSelect: (id: string) => void;
-}
-
-/**
- * Threads = timelines. fork_thread copies a thread's history (oldest first,
- * up to the chosen checkpoint) into a new thread id; replay then runs from
- * that checkpoint's state and next-node set — two divergent histories.
- */
-export function BranchesPanel({ threads, activeId, onSelect }: BranchesPanelProps) {
-  const activeRunning = threads.some(
-    (t) => t.id === activeId && t.status === "running",
-  );
+}) {
   return (
-    <Card className="gap-0 rounded-lg py-0">
-      <InstrumentHeader
-        label={
-          <span className="flex items-center gap-2">
-            <GitBranch size={13} className="text-primary" />
-            Timelines
-          </span>
-        }
-        description="A thread namespaces checkpoints. Fork one at a checkpoint to branch history, then replay on the fork."
-        tone={activeRunning ? "success" : threads.length > 1 ? "rust" : "muted"}
-        pulse={activeRunning}
-      />
-      <CardContent className="py-4">
-        <ol className="space-y-1.5">
-          {threads.map((t) => {
-            const active = t.id === activeId;
-            // Divergence delta: how many checkpoints this fork has vs main.
-            const delta =
-              t.checkpoints.length -
-              (threads.find((x) => x.persona === "main")?.checkpoints.length ??
-                0);
-            return (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(t.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                    active
-                      ? "border-primary/60 bg-accent/20"
-                      : "border-border bg-transparent hover:bg-secondary/60"
-                  }`}
-                >
-                  <span className="font-code text-xs font-medium">{t.id}</span>
-                  <Badge
-                    variant={t.persona === "main" ? "secondary" : "default"}
-                    className="font-code text-[10px]"
-                  >
-                    {t.persona === "main" ? "main" : "fork"}
-                  </Badge>
-                  {t.forkedFrom && (
-                    <span className="min-w-0 truncate font-code text-[10px] text-muted-foreground">
-                      from {t.forkedFrom.thread} @ {t.forkedFrom.checkpoint}
-                    </span>
-                  )}
-                  {t.persona !== "main" && (
-                    <span className="shrink-0 font-code text-[10px] text-primary">
-                      {delta >= 0 ? "+" : ""}
-                      {delta} cp vs main
-                    </span>
-                  )}
-                  <span className="ml-auto shrink-0 font-code text-[10px] text-muted-foreground">
-                    {t.checkpoints.length} cp · {t.status}
+    <div className="flex min-w-0 flex-col gap-2">
+      <Label>Threads</Label>
+      <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
+        {threads.map((t) => {
+          const active = t.id === activeId;
+          return (
+            <li key={t.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(t.id)}
+                disabled={disabled && !active}
+                aria-current={active}
+                className="flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-xl border bg-transparent px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ borderColor: active ? "rgba(240,134,43,.5)" : C.faint, background: active ? "rgba(240,134,43,.06)" : undefined }}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Dot color={STATUS_COLOR[t.status]} />
+                  <span className="min-w-0 truncate font-code text-[12.5px] text-[#f7ece4]">{t.id}</span>
+                  <span className="ml-auto shrink-0 font-code text-[11px]" style={{ color: STATUS_COLOR[t.status] }}>
+                    {t.status}
                   </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </CardContent>
-    </Card>
+                </span>
+                <span className="font-code text-[11px] text-[#8b837b]">
+                  {t.forkedFrom ? `forked from ${t.forkedFrom.thread} at ${t.forkedFrom.checkpoint} · ` : ""}
+                  {t.checkpoints.length} checkpoint{t.checkpoints.length === 1 ? "" : "s"} · {t.attempts} run{t.attempts === 1 ? "" : "s"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
