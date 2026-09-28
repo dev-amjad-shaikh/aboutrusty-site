@@ -49,7 +49,7 @@ const REASONS: { t: string; d: string; src: string; file: string }[] = [
   },
 ];
 
-/** 06 · Why Rust — the language guarantees the runtime leans on. */
+/** 07 · Why Rust — the language guarantees the runtime leans on. */
 export function WhyRust() {
   const [on, setOn] = useState(0);
   const r = REASONS[on];
@@ -57,7 +57,7 @@ export function WhyRust() {
   return (
     <Reveal className="flex flex-col gap-10 border-t border-[rgba(236,150,96,0.10)] py-[90px]">
       <div className="flex max-w-[680px] flex-col gap-[14px]">
-        <Kicker>06 · Why Rust</Kicker>
+        <Kicker>07 · Why Rust</Kicker>
         <SectionTitle>Why Rust</SectionTitle>
         <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
           An agent runtime sits under every run. It has to be correct under

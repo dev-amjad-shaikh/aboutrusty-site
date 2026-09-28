@@ -17,7 +17,7 @@ export function Compare() {
   return (
     <Reveal className="flex flex-col gap-8 border-t border-[rgba(236,150,96,0.10)] py-[90px]">
       <div className="flex max-w-[680px] flex-col gap-[14px]">
-        <Kicker>07 · Compare</Kicker>
+        <Kicker>08 · Compare</Kicker>
         <SectionTitle>How Rusty compares</SectionTitle>
         <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
           A short comparison with the tools teams usually evaluate alongside

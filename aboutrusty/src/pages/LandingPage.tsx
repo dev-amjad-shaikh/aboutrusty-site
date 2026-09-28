@@ -1,6 +1,7 @@
 import { Hero } from "@/sections/landing/home/Hero";
 import { WhatItIs, WhyBuilt } from "@/sections/landing/home/WhatWhy";
 import { HowItWorksHome } from "@/sections/landing/home/HowItWorksHome";
+import { AnatomyOfRun } from "@/sections/landing/home/AnatomyOfRun";
 import { PlatformStack } from "@/sections/landing/home/PlatformStack";
 import { StudioShowcase } from "@/sections/landing/home/StudioShowcase";
 import { WhyRust } from "@/sections/landing/home/WhyRust";
@@ -20,6 +21,7 @@ export default function LandingPage() {
         <WhatItIs />
         <WhyBuilt />
         <HowItWorksHome />
+        <AnatomyOfRun />
         <PlatformStack />
         <StudioShowcase />
         <WhyRust />

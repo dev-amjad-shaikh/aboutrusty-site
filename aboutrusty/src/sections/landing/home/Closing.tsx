@@ -29,12 +29,12 @@ const RESEARCH: { t: string; d: string }[] = [
   },
 ];
 
-/** 08 · Research — four problems the runtime handles, linking to the full page. */
+/** 09 · Research — four problems the runtime handles, linking to the full page. */
 export function ResearchTeaser() {
   return (
     <Reveal className="flex flex-col gap-10 border-t border-[rgba(236,150,96,0.10)] py-[90px]">
       <div className="flex max-w-[680px] flex-col gap-[14px]">
-        <Kicker>08 · Research</Kicker>
+        <Kicker>09 · Research</Kicker>
         <SectionTitle>Built on research, tested as code</SectionTitle>
         <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
           Rusty takes ideas from distributed systems, agent memory research,
@@ -74,12 +74,12 @@ const NEXT: { t: string; d: string }[] = [
   { t: "Studio v4", d: "A new workspace for agents, connectors, skills, knowledge, and operations." },
 ];
 
-/** 09 · What's new — the latest release and what is already on main. */
+/** 10 · What's new — the latest release and what is already on main. */
 export function WhatsNew() {
   return (
     <Reveal className="flex flex-col gap-10 border-t border-[rgba(236,150,96,0.10)] py-[90px]">
       <div className="flex flex-col gap-[14px]">
-        <Kicker>09 · What's new</Kicker>
+        <Kicker>10 · What's new</Kicker>
         <SectionTitle>What's new</SectionTitle>
       </div>
       <div
@@ -133,7 +133,7 @@ export function WhatsNew() {
   );
 }
 
-/** 10 · Proof — the recorded crash-and-resume demo from the repo. */
+/** 11 · Proof — the recorded crash-and-resume demo from the repo. */
 export function Proof() {
   return (
     <Reveal
@@ -141,7 +141,7 @@ export function Proof() {
       style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,420px),1fr))" }}
     >
       <div className="flex flex-col gap-[18px]">
-        <Kicker>10 · Proof</Kicker>
+        <Kicker>11 · Proof</Kicker>
         <SectionTitle>Tested with a real crash</SectionTitle>
         <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
           A run finishes two stages and pauses for a decision. The server is
@@ -187,7 +187,7 @@ const LIMITS = [
   "Server storage defaults to JSON files on local disk. Postgres needs the postgres feature, and neither backend replicates.",
 ];
 
-/** 11 · Get started — the two-minute path, plus honest project status. */
+/** 12 · Get started — the two-minute path, plus honest project status. */
 export function GetStarted() {
   return (
     <Reveal
@@ -195,7 +195,7 @@ export function GetStarted() {
       style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,440px),1fr))" }}
     >
       <div className="flex min-w-0 flex-col gap-[18px]">
-        <Kicker>11 · Get started</Kicker>
+        <Kicker>12 · Get started</Kicker>
         <SectionTitle>Try it in two minutes</SectionTitle>
         <CodeBlock
           language="bash"
