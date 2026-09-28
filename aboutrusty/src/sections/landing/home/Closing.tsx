@@ -158,7 +158,7 @@ export function Proof() {
           <a href={`${REPO}/blob/main/rusty-server/tests/crash_recovery.rs`} target="_blank" rel="noreferrer">
             See the test ↗
           </a>
-          <Link to="/docs#local">Try it yourself →</Link>
+          <Link to="/docs?p=local">Try it yourself →</Link>
         </div>
       </div>
       <figure className="m-0 flex flex-col gap-3">
