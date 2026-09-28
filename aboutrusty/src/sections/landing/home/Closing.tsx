@@ -150,9 +150,10 @@ export function Proof() {
           still there, and the pending decision resumes with one command.
         </p>
         <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
-          The test suite does the same thing on every change in CI: it starts
-          a real server, kills it in the middle of a run, starts a new process,
-          and checks that the run finishes with no work lost.
+          CI checks a harder case on every change. It kills both the server
+          and a worker in the middle of a side effect, restarts them, and
+          checks that the work finishes and the external effect happened
+          exactly once.
         </p>
         <div className="flex flex-wrap gap-5 text-[15px]">
           <a href={`${REPO}/blob/main/rusty-server/tests/crash_recovery.rs`} target="_blank" rel="noreferrer">

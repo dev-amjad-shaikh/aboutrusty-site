@@ -337,11 +337,7 @@ export function LearnIndex() {
                           const cls =
                             "grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 border-t px-2 py-2.5 text-inherit no-underline transition-colors hover:bg-[rgba(240,134,43,.08)]";
                           const style = { borderColor: "rgba(236,150,96,.08)", borderRadius: 8 };
-                          return href.startsWith("/guide/") ? (
-                            <a key={chapter.id} href={href} className={cls} style={style}>
-                              {row}
-                            </a>
-                          ) : (
+                          return (
                             <Link key={chapter.id} to={href} className={cls} style={style}>
                               {row}
                             </Link>

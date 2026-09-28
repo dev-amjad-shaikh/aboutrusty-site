@@ -90,3 +90,149 @@
     );
   }
 }
+
+/* The book (guide/*.md rendered in-app): prose in the lesson page's voice. */
+@layer components {
+  .book-prose {
+    color: #cfc3b8;
+    font-size: 17px;
+    line-height: 1.75;
+    overflow-wrap: break-word;
+  }
+  .book-prose > * + * { margin-top: 1.1em; }
+  .book-prose h2 {
+    position: relative;
+    margin-top: 2.4em;
+    padding-top: 1.4em;
+    border-top: 1px solid rgba(236, 150, 96, 0.12);
+    font-size: 30px;
+    line-height: 1.15;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: #f7ece4;
+    scroll-margin-top: 110px;
+  }
+  .book-prose h3 {
+    position: relative;
+    margin-top: 1.9em;
+    font-size: 21px;
+    line-height: 1.3;
+    font-weight: 400;
+    color: #f7ece4;
+    scroll-margin-top: 110px;
+  }
+  .book-prose h4 { margin-top: 1.5em; font-size: 17px; font-weight: 500; color: #ece0d5; }
+  .book-prose .bk-anchor {
+    position: absolute;
+    left: -0.9em;
+    opacity: 0;
+    color: #f0862b;
+    font-weight: 300;
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .book-prose h2:hover .bk-anchor, .book-prose h3:hover .bk-anchor { opacity: 0.7; }
+  .book-prose a { color: #f0862b; text-decoration: none; }
+  .book-prose a:hover { color: #fb9a3f; text-decoration: underline; text-underline-offset: 3px; }
+  .book-prose strong { color: #f7ece4; font-weight: 500; }
+  .book-prose em { color: #e6d9cd; }
+  .book-prose ul, .book-prose ol { padding-left: 1.3em; }
+  .book-prose ul { list-style: none; }
+  .book-prose ul > li { position: relative; }
+  .book-prose ul > li::before {
+    content: "";
+    position: absolute;
+    left: -1em;
+    top: 0.72em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #f0862b;
+  }
+  .book-prose ol { list-style: decimal; }
+  .book-prose ol > li::marker { color: #f0862b; font-family: "IBM Plex Mono", monospace; font-size: 0.85em; }
+  .book-prose li + li { margin-top: 0.45em; }
+  .book-prose :not(pre) > code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.86em;
+    color: #ffc7a6;
+    background: rgba(240, 134, 43, 0.08);
+    border-radius: 4px;
+    padding: 0.08em 0.35em;
+  }
+  .book-prose blockquote {
+    margin-left: 0;
+    padding: 0.2em 0 0.2em 1.1em;
+    border-left: 2px solid rgba(240, 134, 43, 0.5);
+    color: #d8ccc0;
+  }
+  .book-prose hr { border: 0; border-top: 1px solid rgba(236, 150, 96, 0.12); margin: 2.2em 0; }
+  .book-prose .bk-code {
+    position: relative;
+    border: 1px solid rgba(236, 150, 96, 0.16);
+    border-left: 2px solid rgba(240, 134, 43, 0.55);
+    border-radius: 12px;
+    background: rgba(8, 5, 4, 0.75);
+    overflow: hidden;
+  }
+  .book-prose .bk-code pre {
+    margin: 0;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #ddd0c4;
+  }
+  .book-prose .bk-code-lang {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6f675f;
+  }
+  .book-prose .bk-table {
+    overflow-x: auto;
+    border: 1px solid rgba(236, 150, 96, 0.14);
+    border-radius: 12px;
+  }
+  .book-prose table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
+  .book-prose th {
+    text-align: left;
+    font-weight: 400;
+    color: #f7ece4;
+    background: rgba(240, 134, 43, 0.07);
+    padding: 10px 14px;
+  }
+  .book-prose td { padding: 10px 14px; border-top: 1px solid rgba(236, 150, 96, 0.1); vertical-align: top; }
+  .book-prose .bk-box {
+    border: 1px solid rgba(240, 134, 43, 0.3);
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(240, 134, 43, 0.09), rgba(200, 110, 44, 0.02));
+    padding: 18px 22px;
+  }
+  .book-prose .bk-box > * + * { margin-top: 0.7em; }
+  .book-prose .bk-warning, .book-prose .bk-danger { border-color: rgba(240, 154, 128, 0.4); }
+  .book-prose .bk-box-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #f0862b;
+  }
+  .book-prose .bk-mermaid {
+    display: flex;
+    justify-content: center;
+    min-height: 80px;
+    padding: 20px 14px;
+    border: 1px solid rgba(236, 150, 96, 0.16);
+    border-radius: 14px;
+    background: radial-gradient(60% 80% at 50% 0%, rgba(240, 134, 43, 0.07), transparent 70%), rgba(10, 7, 6, 0.8);
+    overflow-x: auto;
+  }
+  .book-prose .bk-mermaid svg { max-width: 100%; height: auto; }
+  .book-prose .bk-mermaid-fallback { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: #a39a91; white-space: pre-wrap; }
+}

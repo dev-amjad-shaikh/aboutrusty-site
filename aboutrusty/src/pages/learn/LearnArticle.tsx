@@ -10,10 +10,9 @@ import { readDone, writeDone } from "./progress";
 const GH = "https://github.com/dev-amjad-shaikh/rusty/blob/main/";
 const CODE_INK = "#ffc7a6";
 
-/** A link that uses the router for site pages and a plain anchor for the
- * book (a separate static site) and GitHub. */
+/** A link that uses the router for site pages and a plain anchor for GitHub. */
 function SmartLink({ href, className, style, children }: { href: string; className?: string; style?: React.CSSProperties; children: ReactNode }) {
-  if (href.startsWith("/") && !href.startsWith("/guide/")) {
+  if (href.startsWith("/")) {
     return (
       <Link to={href} className={className} style={style}>
         {children}
@@ -556,13 +555,8 @@ export function LearnArticle() {
   const lesson = getLesson(slug);
   const legacy = slug ? LEGACY_SLUGS[slug] : undefined;
 
-  useEffect(() => {
-    if (!lesson && legacy?.startsWith("/guide/")) window.location.replace(legacy);
-  }, [lesson, legacy]);
-
   if (lesson) return <LessonPage key={lesson.slug} lesson={lesson} />;
-  if (legacy && !legacy.startsWith("/guide/")) return <Navigate to={legacy} replace />;
-  if (legacy) return null;
+  if (legacy) return <Navigate to={legacy} replace />;
 
   return (
     <div className="mx-auto flex max-w-[700px] flex-col gap-4 px-4 py-20 sm:px-7">

@@ -22,7 +22,7 @@ const STEPS: { t: string; d: string }[] = [
 
 /** [text, color, step index this line belongs to] */
 const TERM: [string, string, number][] = [
-  ["$ cargo test -p rusty-agent-server --test crash_recovery", "#f7ece4", 0],
+  ["$ cargo run --example server_demo -p rusty-agent-server", "#f7ece4", 0],
   ["▸ server started · pid 48211", "#b8b0a8", 0],
   ["▸ run r_7f2 · step 1 plan        ✓ checkpoint 1", "#9fd4a8", 1],
   ["▸ run r_7f2 · step 2 research    ✓ checkpoint 2", "#9fd4a8", 2],
@@ -154,7 +154,7 @@ export function HowItWorksHome() {
               <span className="h-2.5 w-2.5 rounded-full bg-[#3a2a22]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#3a2a22]" />
               <span className="ml-2 font-code text-[12px] text-[#8b837b]">
-                crash_recovery · real kill -9
+                server_demo · real kill -9
               </span>
               <span
                 className="ml-auto flex items-center gap-1.5 font-code text-[11.5px]"
@@ -199,10 +199,11 @@ export function HowItWorksHome() {
             <span className="text-primary">await</span>?;
           </pre>
           <span className="text-[14px] leading-[1.55] text-[#a39a91]">
-            This path runs in CI on every change.{" "}
+            A simplified trace of the demo server. In CI,{" "}
             <a href="https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-server/tests/crash_recovery.rs">
-              See the test
-            </a>
+              crash_recovery.rs
+            </a>{" "}
+            kills real processes on every change.
           </span>
         </div>
       </div>

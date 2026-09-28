@@ -21,7 +21,8 @@ npm run build  # typecheck (tsc -b) + production build
 
 Content is authored as typed TypeScript modules — no CMS, no markdown pipeline.
 
-- `src/content/learn/` — learn/docs content modules
+- `src/content/learn/` — Learn lessons and the course map
+- `guide/*.md` — the book ("Inside Rusty"), rendered in-app at `/guide/<chapter>.html` by `src/pages/book/BookPage.tsx`
 - `src/sections/` — page sections
 - `src/pages/` — route components
 
