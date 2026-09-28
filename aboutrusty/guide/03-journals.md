@@ -6,81 +6,101 @@ title: 03 · Journals & evidence
 
 # Journals & evidence
 
-Every serious system that executes work keeps some record of what it did. The interesting question is what the record is *for*, because the answer decides what the record contains. This chapter is about Rusty's answer — the Flight Recorder — and it starts, as every Part II chapter will, with the general idea.
+Any system that executes work keeps a record of what it did. What the record is for decides what it has to contain. This chapter covers Rusty's record, the Flight Recorder, starting with the general idea.
 
 ## The concept: four kinds of "what happened"
 
-Systems record execution for four different reasons, and they are easy to confuse:
+Systems record execution for four different reasons.
 
-- **Observability** records so humans can look. Logs, traces, metrics — OpenTelemetry is the canonical shape. The reader is a person with a dashboard; approximation is fine; sampling is normal.
-- **Event sourcing** records so state can be rebuilt. The journal *is* the truth; current state is a fold over it.
-- **Workflow histories** record so execution can resume. Temporal's event history is the famous one: persist each decision, replay the history on recovery, deduplicate side effects on re-execution.
-- **Evidence** records so the system can be held to account later — and so it can *learn*. Evidence has to answer not just "what happened" but "what was decided, against which alternatives, under which policy version, with what outcome."
+- **Observability** records so people can look. Logs, traces, and metrics, with OpenTelemetry as the common shape. Approximation and sampling are acceptable.
+- **Event sourcing** records so state can be rebuilt. The event log is the source of truth, and current state is a fold over it.
+- **Workflow history** records so execution can resume. Temporal persists each decision, replays the history on recovery, and deduplicates side effects on re-execution.
+- **Evidence** records so the system can be held to account and can learn later. It has to capture what was decided, among which alternatives, under which policy version, and with what outcome.
 
-The fourth reason is the rare one, and it has teeth. The off-policy evaluation literature — the statistics of comparing a new policy against logged data — has known for decades that a log you intend to learn from must record the *legal action set* and the *propensity* of the action taken, at decision time. A propensity reconstructed afterward is fiction; the counterfactual is only as good as what you froze in the moment.
+The fourth reason has a specific requirement from off-policy evaluation, the statistics of judging a new policy against logged data. A log you intend to learn from must record the set of legal actions and the probability (propensity) of the action taken, at the moment of the decision. A propensity reconstructed afterward cannot be trusted.
 
 ## Rusty: the Flight Recorder
 
-Rusty's journal is evidence in that fourth sense, and the design says so in its first paragraph: not observability spans for humans to eyeball, but a causally linked, tamper-evident journal of effects that later waves replay against, evaluate policies on, and roll back from (`rusty-core/src/record.rs`, `rusty-core/src/journal.rs`; design: `docs/flight-recorder-design.md`). Three commitments shape it.
+Rusty's journal is built as evidence in that fourth sense. The design is in [docs/flight-recorder-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/flight-recorder-design.md) and shipped in R0.5 (platform v0.6). The contracts live in `rusty-core/src/record.rs`, the journal in `rusty-core/src/journal.rs`, and replay in `rusty-core/src/replay.rs`. Three decisions shape it.
 
-**Contracts freeze first.** Replay engines, server endpoints, Studio views, and the learning loop all consume the same shapes, so the schemas were frozen with golden-file tests under `rusty-core/tests/golden/` — accidental drift is a CI failure — even before several of them had a producer. `DecisionEvent` was frozen in R0.5 with nothing emitting it, precisely so that every journal written since then is already learnable evidence. The sequencing rule is *replay before learning*: no learning mechanism ships before the evidence it learns from can be faithfully recorded and replayed.
+**The contracts were frozen first.** Replay, the server endpoints, Studio, and the learning loop all read the same shapes, so those shapes are pinned by golden-file tests under `rusty-core/tests/golden/`. An accidental change to a serialized contract fails CI. `DecisionEvent`, the learning contract with its legal-action set and propensity, was frozen in R0.5 while the executor emitted no decision events at all. The first producer arrived with R0.8's retry policy (`retry_decision_event` in `rusty-core/src/durable.rs`), and journals written in between already had a compatible shape. The design names the ordering rule: replay before learning. No learning mechanism ships before the evidence it learns from can be recorded and replayed.
 
-**Determinism is a seam, not a property.** You cannot bolt exact replay onto an executor that reads wall time and OS entropy from deep inside its loop. The executor sources every timestamp through a `Clock` and every random id through an `RngSource` (`rusty-core/src/journal.rs`): `System` by default, `Clock::logical` and `RngSource::seeded` when you need two drives of the same graph to produce byte-identical journals. That property is proven by test, and it's what makes replay fixtures in CI possible.
+**Determinism is injected.** Exact replay is impossible if the executor reads wall time and OS randomness deep inside its loop. The executor gets every timestamp from a `Clock` and every random id from an `RngSource` (`rusty-core/src/journal.rs`). The defaults are the system clock and OS randomness. For reproducible runs you set `Clock::logical(start_ms, tick_ms)` and `RngSource::seeded(seed)` through `RunConfig::with_journal` and `with_rng`. The test `seeded_clock_and_rng_make_journal_snapshots_identical` in `rusty-core/tests/flight_recorder.rs` runs the same model-and-tool graph twice with a logical clock and seed 7 and asserts the two serialized journal snapshots are equal.
 
-**Effects are classified at declaration time.** "Was that call safe to retry?" is not answerable from a log line after the fact. Every journaled event declares the effect class of whatever produced it:
+**Effects are classified when they are declared.** Whether a call was safe to retry cannot be recovered from a log line afterward. Every journaled event carries the `Effect` class of whatever produced it. The enum lives in `rusty-api/src/lib.rs` and is ordered as a severity ladder:
 
-| Class | Re-execution | Retry / replay guarantee |
+| Class | Re-execution | Retry and replay |
 |---|---|---|
-| `Pure` | safe and equivalent | unconstrained; output may be re-derived or reused |
+| `Pure` | safe and equivalent | unconstrained; replay may re-run or reuse the output |
 | `ReadOnly` | safe, not equivalent | exact replay serves the journaled output |
 | `Idempotent` | safe under a stable key | retry with the same idempotency key |
-| `Compensatable` | duplicates the effect | rollback pairs effect with compensation |
-| `NonIdempotent` | duplicates, no compensation | never silently retried; re-execution is explicit |
+| `Compensatable` | duplicates the effect | pair the effect with its declared compensation |
+| `NonIdempotent` | duplicates, no undo | never retried silently; re-execution is an explicit decision |
 
-The defaults are honest and conservative: plain nodes are `Pure`; models, tools, remote nodes, and WASM nodes are `NonIdempotent`, each trait carrying a documented override point. The class is the bridge between "what happened" and "what may safely happen again" — retry policy, replay serving, and capsule grants all consume it downstream.
+The defaults are conservative. Plain nodes default to `Pure` (`rusty-core/src/node.rs`). Model calls, tool calls, remote nodes, and WASM nodes default to `NonIdempotent`, and each trait has an `effect()` method you override when you can prove a narrower class. Retry policy, replay serving, and capsule grants all read this class.
 
 ## One recorded fact
 
-The atomic unit is `RunEvent`: a deterministic id (`{run_id}:{seq}`), a closed `kind` enum (super-step start/end, node input/output, model call, tool call, remote call, WASM call, interrupt, resume, routing decision, checkpoint written), the effect class, input and output as `PayloadRef` — inline up to 4 KiB, content-addressed SHA-256 artifact above — plus latency, tokens, cost, status, and a causal `parent`.
+The unit of the journal is `RunEvent` (`rusty-core/src/record.rs`). Its fields:
 
-Two properties turn this from a log into evidence. `seq` is the total order — wall time is just an attribute, so clock skew can't scramble the account. And `parent` forms the causal chain: a model call's parent is the node invocation that made it; a checkpoint write's parent is the routing decision that ended the step. Walk parents backward and you reconstruct why, not just what.
+- `id`, deterministic: `{run_id}:{seq}`
+- `run_id`, `thread_id`, and an optional `node_id`
+- `seq`, the total order within the journal
+- `kind`, a `RunEventKind`
+- `effect`, the class above
+- `input` and `output` as `PayloadRef`: inline up to `INLINE_PAYLOAD_MAX_BYTES` (4096 bytes), otherwise a SHA-256 content-addressed artifact held in the journal
+- `latency_ms`, `tokens`, `cost_usd`, `status`
+- `parent`, the causal parent's event id
+- `recorded_at`
 
-The journal itself is append-only, hash-chained over every event, and cheap to clone. A `JournalSnapshot` is the complete export — events, artifacts, head hash — and `Journal::from_snapshot` re-verifies the head hash on load, so an edited fixture fails at the boundary instead of deep inside a replay. Every checkpoint carries a `journal_ref`: the journal's event count and chained head hash at that boundary. State pins not just *how much* evidence existed, but *which* evidence.
+R0.5 shipped twelve execution kinds: super-step start and end, node input and output, model call, tool call, remote call, WASM call, interrupt, resume, routing decision, and checkpoint written. Later releases added kinds without changing old ones: effect receipts, agent and mailbox events, memory reads and writes, candidate lifecycle events, policy decisions, capsule calls and denials, connection and credential events, artifacts, and deployments. Old journals keep deserializing.
+
+Two fields turn the log into evidence. `seq` is the order; wall time is an attribute, so clock skew cannot reorder the account. `parent` forms a causal chain: a model call's parent is the node invocation that made it. Walk parents backward and you get why an event happened, not only that it did.
+
+The journal is append-only and hash-chained. Each appended event extends a SHA-256 head hash over the previous head and the event's bytes. A `JournalSnapshot` exports the events, artifacts, and head hash, and `Journal::from_snapshot` recomputes the chain and rejects a snapshot whose head does not match. An edited fixture fails when it is loaded, not halfway through a replay. Each checkpoint carries a `journal_ref` (`JournalRef { events, sha256 }`), so a checkpoint pins both how many events existed at that boundary and which ones.
 
 ## Replay: the point of the exercise
 
-A journal you can only read is an audit log. Rusty's journal is executable evidence, because exact replay re-drives a recorded run from its snapshot with **every outbound effect served from the journal instead of executed** (`rusty-core/src/replay.rs`). The trick is a pair of wrapper types per effect kind, so the same graph code runs in both modes:
+A journal you can only read is an audit log. Exact replay re-drives a recorded run from its journal and serves every outbound effect from the record instead of executing it (`rusty-core/src/replay.rs`). The mechanism is a pair of wrappers per effect kind, so the same graph code runs in both modes:
 
 ```mermaid
 flowchart LR
-    subgraph record["Recording a run"]
-        N1["node"] --> RC["RecordingChatModel / RecordingTool"]
-        RC -->|"journal each call, then forward"| REAL["real model / tool"]
+    subgraph record["Recording"]
+        N1["node code"] --> RC["RecordingChatModel /<br>RecordingTool"]
+        RC -->|"forward, then journal<br>request + response"| REAL["real model / tool"]
     end
     subgraph replay["Exact replay"]
-        N2["same node code"] --> RP["ReplayingChatModel / ReplayingTool"]
-        RP -->|"matched by sequence + request hash"| J["journal snapshot"]
-        RP -.->|"never invoked"| DEAD["real model / tool"]
+        N2["same node code"] --> RP["ReplayingChatModel /<br>ReplayingTool"]
+        RP -->|"match next seq +<br>request hash"| J["JournalSnapshot"]
+        RP -.->|"no code path"| DEAD["real model / tool"]
     end
 ```
 
-There is no code path from a replaying wrapper to the wrapped implementation — tests replay against panic-on-call sentinels and prove the sentinels never fire, which means replay is safe against credential-less clients and costs zero outbound calls. Each call is matched against the journal by sequence and request hash through a shared cursor; divergence, out-of-order effects, exhaustion, and shortfall all fail loudly as `RustyError::Replay` with the reason named. `ExactReplay::run_and_verify` goes further: it requires the replayed journal to equal the recorded one event for event. Interrupts need no special serving — with every effect answered deterministically, node logic re-derives the same interrupt, checkpoint id included.
+The servable kinds are listed in `SERVABLE_KINDS`: `ModelCall`, `ToolCall`, `RemoteCall`, and `WasmCall`. Everything else (super-step boundaries, node inputs and outputs, routing, interrupts, checkpoint writes) is re-derived by the executor during replay and compared against the record.
 
-Two companions ship with it. `BranchDiff::between(base, branch)` compares two journal snapshots logically — first divergent `seq`, per-super-step channel diffs, per-branch token and cost totals — which is how you look at two continuations of a forked history. And `ReplayFixture` bundles a recorded run (topology hash, journal snapshot, final checkpoint, clock and RNG parameters) into a JSON file for CI; a checked-in example lives at `rusty-core/tests/fixtures/exact_replay_agent_tools.json`. An agent regression test that makes zero network calls is a fixture replay.
+The replaying wrappers hold the real implementation but have no code path that calls it. `rusty-core/tests/replay.rs` replays with sentinel inner implementations, and the test `exact_replay_reproduces_journal_and_state_byte_identically` asserts that the sentinels were called zero times and that the replayed journal serializes to the same bytes as the recorded one. So replay makes zero outbound calls and works without credentials. Each served call is matched by sequence and canonical request hash. A request that differs, an effect out of order, a request past the end of the journal, or a replay that finishes with recorded effects unserved all fail with `RustyError::Replay` and say which. `ExactReplay::run_and_verify` goes further and requires the replayed journal to equal the recorded one. Interrupts need no special handling: with every effect answered identically, the node re-derives the same interrupt (`interrupted_run_replays_to_the_same_suspension`).
 
-What is designed but not yet shipped, stated plainly: **live replay** (re-executing the effect classes that permit it, answering "what does this run do against *today's* world") and **hybrid replay** (serve to a fork point, run live afterward — the counterfactual probe) are both defined in the design and deferred; exact replay is the fidelity floor they will build on.
+One limit is stated in the module docs. Byte-identical replay is guaranteed for runs whose super-steps run one node at a time. With several parallel nodes in a step, clock reads interleave by schedule.
+
+Two companions ship with exact replay:
+
+- `BranchDiff::between(base, branch)` compares two journal snapshots: the first divergent `seq`, per-step channel differences, and per-branch token and cost totals. Use it to compare two continuations of a forked history.
+- `ReplayFixture` bundles a run (topology hash, journal snapshot, final checkpoint, clock and RNG parameters) into one JSON file. `ReplayFixture::replay_in_ci` goes from a checked-in file to a verified replay in one call. The repository checks one in at `rusty-core/tests/fixtures/exact_replay_agent_tools.json`, replayed by `checked_in_fixture_replays_in_ci`. An agent regression test that makes no network calls is a fixture replay.
+
+The design defined two more modes. **Hybrid replay** (serve recorded effects up to a fork point, then act differently) shipped in R0.10 as part of the runtime digital twin: `CounterfactualFork::then_act_with` in `rusty-core/src/twin.rs`. The twin can only evaluate decisions that change when or whether an effect runs, not what an effect is asked, because the journal has no answer for a request it never saw. **Live replay** (re-executing the effects whose class allows it, to see what a run does against today's world) is designed and not built.
 
 ::: tip Key takeaways
-- Rusty's journal is evidence, not logs: append-only, hash-chained, causally parented, with `seq` as the total order.
-- Effects are classified at declaration time (`Pure` through `NonIdempotent`), and that classification drives retry, replay, and capability policy downstream.
-- Determinism is an injected seam (`Clock`, `RngSource`), which is what makes byte-identical replay provable.
-- Exact replay, branch diff, and portable CI fixtures are shipped; live and hybrid replay are designed, not yet shipped.
-- Contracts were frozen — and golden-pinned — before their consumers existed, so every journal since R0.5 is already learnable evidence.
+- The journal is evidence: append-only, hash-chained, causally parented, ordered by `seq`.
+- Every event carries an `Effect` class from `Pure` to `NonIdempotent`, declared by its producer, and retry, replay, and capsules read it.
+- `Clock` and `RngSource` are injected, which is what makes byte-identical journals testable.
+- Exact replay serves model, tool, remote, and WASM calls from the journal and never calls the real implementation. Branch diff and CI fixtures ship with it.
+- Hybrid replay shipped in R0.10 through the digital twin. Live replay is designed, not built.
 :::
 
 **Further reading**
 
-- [docs/flight-recorder-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/flight-recorder-design.md) — the R0.5 design: contracts, determinism seams, replay modes
-- [rusty-core/src/record.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/record.rs) — `Effect`, `RunEvent`, `DecisionEvent`, `CheckpointHeader`
-- [rusty-core/src/replay.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/replay.rs) — `ExactReplay`, `BranchDiff`, `ReplayFixture`
-- [rusty-core/examples/react_record_replay.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/examples/react_record_replay.rs) — journal a run, re-drive it with zero outbound calls
+- [docs/flight-recorder-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/flight-recorder-design.md): the R0.5 design
+- [rusty-core/src/record.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/record.rs): `RunEvent`, `RunEventKind`, `DecisionEvent`, `CheckpointHeader`
+- [rusty-core/src/replay.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/replay.rs): `ExactReplay`, `BranchDiff`, `ReplayFixture`
+- [rusty-core/tests/replay.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/tests/replay.rs): the panic-sentinel replay tests
+- [rusty-core/examples/react_record_replay.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/examples/react_record_replay.rs): record a run, then replay it with zero outbound calls

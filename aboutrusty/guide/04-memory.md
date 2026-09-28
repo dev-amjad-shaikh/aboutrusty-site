@@ -6,70 +6,84 @@ title: 04 · Memory
 
 # Memory
 
-An agent that remembers nothing starts every conversation as a stranger. An agent that remembers everything wrong is worse — it confidently acts on stale facts, leaks one user's context into another's, and nobody can say where a belief came from. Memory is the chapter where "the model saw what we put in the prompt" meets "the system persists things across runs," and the field has strong opinions about how. Rusty's opinion is stronger: memory is governed runtime state, not a vector store wired into a prompt template.
+An agent that remembers nothing starts every conversation from zero. An agent that remembers badly is worse: it acts on stale facts, leaks one user's context into another's, and nobody can say where a belief came from. This chapter covers how Rusty stores what agents remember across runs. Memory in Rusty is a governed record store with scopes, provenance, and journaled reads and writes. An agent does not edit it freely through a tool.
 
 ## The concept: what the field settled on, and what it lost
 
-The research lineage is worth naming, because Rusty adopts from it deliberately and rejects from it deliberately.
+[docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md) names the systems Rusty borrows from and where it departs.
 
-**MemGPT / Letta** gave agent memory its operating-system analogy: a small core tier always in context, an archival tier outside it, and the agent paging between them through explicit tool calls. The discipline to keep is *explicit operations* — memory writes are declared, not side effects. The part to reject is the self-editing pattern: an agent calling `memory_replace` rewrites production behavior in place, with no candidate, no evaluation, and no way back but a database restore.
+**MemGPT (now Letta)** introduced the operating-system analogy: a small core tier always in context, an archival tier outside it, and the agent paging between them through explicit tool calls. Rusty keeps the explicit operations. It rejects self-editing, where an agent rewrites its own core memory with a tool call and changes production behavior with no candidate, no evaluation, and no way back.
 
-**Zep / Graphiti** made memory temporal: facts carry validity windows and bitemporal annotation — when the fact was true versus when the system learned it — so contradiction is handled by time rather than deletion.
+**Zep and Graphiti** made memory temporal. Facts carry validity windows, and the system tracks when a fact was true separately from when it learned the fact, so contradictions are handled by time instead of deletion.
 
-**Mem0** industrialized extraction: pipelines that pull facts from conversations, detect conflicts, and organize by user / session / agent scope.
+**Mem0** built extraction pipelines that pull facts out of conversations, detect conflicts, and organize memory by user, session, and agent.
 
-Build memory at framework level and you lose three things, and the learn design names them precisely (`docs/learn-design.md`). **Scope** becomes a convention — nothing stops a support agent's write from landing in the pool every agent reads, because "user memory" and "team memory" are strings in application code. **Provenance** is absent — a record cannot answer who wrote it, from which run's evidence, against which superseded fact, so when behavior changes there is nothing to audit. **Mutation is silent** — the self-editing pattern again.
-
-The tiered-memory idea — working memory in context, episodic memory of what happened, semantic memory of what's true — shows up in Rusty too, but not as three named stores. Rusty models the same distinctions through *scopes* (how far a record reaches) and *kinds* (what sort of thing it claims), with the conversation state itself playing the working tier's role. One record model, orthogonal axes.
+The design names three things you lose when memory is a framework-level add-on. **Scope** becomes a convention: nothing stops one agent's write from landing in a pool every agent reads. **Provenance** is missing: a record cannot say who wrote it, from which run, or what it replaced. **Mutation is silent**: the self-editing pattern again.
 
 ## Rusty: governed memory
 
-One serde-versioned struct, `MemoryRecord`, additive-evolution only, golden-pinned (`rusty-core/src/memory.rs`). Every field exists because a downstream operation needs it:
+Governed memory shipped in R0.8. Every memory is one `MemoryRecord` (`rusty-core/src/memory.rs`), a serde-versioned struct that only grows by adding optional fields and is pinned by golden files. Each field exists because some operation needs it:
 
-- **`memory_id`** is a content address — SHA-256 over the canonical serialization of content plus provenance. Identity is integrity: a changed record is a new id, and a tampered record fails its own address.
-- **`kind`** is a closed enum: `fact`, `preference`, `example`, `summary`. `example` is the correction loop's output (a corrected input/output pair); `summary` names its source records, which is what makes dependent-summary invalidation computable.
-- **`scope`** is a closed enum — `run`, `agent`, `team`, `user`, `tenant` — plus the concrete scope id. The taxonomy maps onto the Agent Fabric's `StateScope`s with one honest addition: run scope, memory whose lifetime is bound to one run's thread. An agent manifest's declared scopes translate one-to-one into the memory it may write.
-- **`provenance`** is mandatory: who wrote it (`agent:{id}`, `human:{id}`, `distiller:{name}`, `system`), from what evidence (run id, journal event ids, a correction id, source record ids), and when. A record that cannot name its origin cannot be audited, so origin is not optional.
-- **`confidence`** is an `f64` declared by the writer — a human correction defaults to 1.0, a distilled record carries the distiller's estimate. Nothing in the runtime *computes* confidence. That's deliberate honesty: confidence is a claim, not a measurement.
-- **`validity`** is a window — the interval the record claims to be true — kept distinct from `created_at`, when the system learned it. Zep's bitemporal split as two plain timestamps.
-- **`expires_at`**, an optional TTL, is a retrieval filter and a forgetting trigger — not a silent reaper.
-- **`supersedes`** chains records: the superseded record is retained as evidence but filtered from default retrieval. There is no in-place update anywhere in the model.
-- **`content`** is a `PayloadRef` — the journal's own discipline: inline up to 4 KiB, content-addressed artifact storage above.
+- **`memory_id`**: SHA-256 over the canonical serialization of content plus provenance. A changed record is a new id, and a tampered record no longer matches its own address.
+- **`kind`**: `fact`, `preference`, `example`, or `summary`. An `example` is the corrected input/output pair the correction loop produces. A `summary` names its source records, which is what lets forgetting find the summaries that depend on a record.
+- **`scope`**: one of `run`, `agent`, `team`, `user`, `tenant`, plus a concrete scope id. The first four map onto the Agent Fabric's `StateScope`s ([Chapter 08](./08-blueprints-agents.md#state-scopes-and-supervision)), with `agent` corresponding to `StateScope::Private`. `run` is new here: memory bound to one run's thread.
+- **`key`, `tags`, `priority`**: the writer's lookup key, equality-matched tags, and an explicit rank used during assembly.
+- **`provenance`**: who wrote it (`agent:{id}`, `human:{id}`, `distiller:{name}`, or `system`), from what evidence (run id and journal event ids, a correction id, a candidate id, source record ids), and when. It is mandatory.
+- **`confidence`**: an `f64` in `(0, 1]` declared by the writer. A human correction sets 1.0. The runtime validates the range and filters on it. It never computes it.
+- **`validity`**: the interval the record claims to be true, kept separate from **`created_at`**, when the system learned it.
+- **`expires_at`**: an optional expiry that retrieval filters on.
+- **`supersedes`**: the record this one replaces. The replaced record is kept as evidence and filtered out of default retrieval. Nothing in the model is updated in place.
+- **`content`**: a `PayloadRef`, inline up to 4 KiB and content-addressed above, the same rule the journal uses.
+- **`embedding`**: reserved and always `None` for now, so vector retrieval can be added without changing the wire format.
 
 ## The write path: governed three ways
 
-Every write is checked before any I/O happens.
+Every write passes three checks.
 
-1. **Scope authorization.** An agent may write only the scopes its `CapabilityManifest` declares; an undeclared scope write fails fast, the same shape as writing an undeclared channel at the barrier. Run scope is written by the runtime on the run's behalf. Tenant scope is configuration-grade — writable by operators, never by agents — and tenant isolation stays the `{tenant}/` id-namespacing the server already enforces: another tenant's memories don't exist in your namespace, 404 never 403.
-2. **Effect classification.** A memory write is an `Effect::Idempotent` under a derived key (`memory:{scope}:{memory_id}`), so retried submissions converge, and it's journaled with causal parentage into the writing run (`MemoryWrite`). A read is `Effect::ReadOnly` journaled as `MemoryRead` — which is what makes candidate evaluation reproducible: exact replay serves the journaled retrieval instead of re-querying the store, the same rule the Flight Recorder applies to model and tool calls.
-3. **No silent behavioral rewrites.** A memory write changes what future retrievals return — nothing else. If the write is meant to change a prompt, a policy, or a permission, it enters the candidate pipeline of Chapter 05. This is the learning rule enforced at the type level of a write path.
+1. **Scope authorization.** On the server, `POST /memory` and the correction and consolidation endpoints share one gate, `check_memory_scope_gate` in `rusty-server/src/routes.rs`. `run` scope is refused with 400 on the public API; the runtime writes it on a run's behalf, and a run-scope correction is the one governed exception. `agent` scope requires the agent to exist in your tenant (404 otherwise) and its manifest to declare `StateScope::Private` (403 otherwise). `tenant` scope must name your own tenant (403). `user` scope must name yourself unless you are an administrator or a service key. `team` scope rides tenant namespacing.
+2. **Effect classification.** A write is `Effect::Idempotent` under the key `memory:{scope}:{memory_id}`, so a retried write converges, and it is journaled as `MemoryWrite` with its provenance. A read is `Effect::ReadOnly`, journaled as `MemoryRead`. During exact replay, `MemoryReplaySource` serves the journaled read instead of querying the store, the same rule the Flight Recorder applies to model and tool calls. A replayed run that tries to write has diverged from its evidence.
+3. **No silent behavior change.** A memory write changes what later retrievals return and nothing else. A change meant to alter a prompt, a policy, or a tool permission goes through the candidate pipeline in [Chapter 05](./05-learning-loop.md).
 
 ## Retrieval: structural, budgeted, journaled
 
-`MemoryQuery` is deliberately structural: scope, kind, key/tag equality, validity-at-time, minimum confidence, exclude-expired, exclude-superseded, authored-by. **No similarity search.** Vector retrieval is deferred, and the design is plain about the consequence: structured filters answer "what is current, scoped, attributed, and tagged" but cannot answer "what is semantically similar to this situation" — no amount of filtering fakes that. Writers must key and tag deliberately, and readers should treat absence of a hit as absence of a key, not absence of a fact. The record model reserves an additive `embedding` field so vectors slot in without a wire change when the deferral lifts.
+`MemoryQuery` filters by structure: scope, kind, key and tag equality, validity at a point in time, minimum confidence, excluding expired, excluding superseded, and author. There is no similarity search. The design states the cost: structured filters can answer what is current, scoped, attributed, and tagged, but not what is semantically similar to the current situation. Writers need to key and tag deliberately, and a miss means the key is absent, not that the fact is.
 
-Assembly for a prompt is token-bounded: a `ContextBudget` packs filtered records by deterministic rank — explicit priority, then confidence, then recency — until the budget runs out, and the assembly itself is journaled: the record ids and their order ride in the `MemoryRead` event's output payload. Two properties follow. Determinism: equal store state and equal budget produce byte-equal assemblies. Auditability: the prompt the model saw is reconstructable from the journal, not from re-running a query against a store that has since changed.
+Assembly into a prompt is bounded by a `ContextBudget`. Filtered records are ranked by explicit priority, then confidence, then recency, with the content address as a final tie-break, and packed until the budget runs out. Tokens are estimated as serialized content bytes divided by 4, plus a declared safety margin (`ContextBudget::margin_percent`). The assembly (the record ids, their order, and the token accounting) is the `MemoryRead` event's output payload. Equal store state and an equal budget produce a byte-equal assembly, and the prompt the model saw can be rebuilt from the journal without re-querying a store that has since changed.
+
+On `main`, `rusty-core/src/memory_tiers.rs` adds a tier overlay on top of scopes: working (run scope), episodic (summaries at agent or team scope), and semantic (facts, preferences, and examples at agent scope and wider). `MemoryTier::classify` derives the tier from scope and kind. Tiers shape assembly, not storage; there are still no separate stores. The same module adds a key grammar (`domain.name`) enforced by a `WriteGate` that also collapses duplicate writes of the same content under the same key onto one record.
 
 ## The maintenance operations
 
-Consolidation, conflict detection, and forgetting are runtime operations with evidence — none is a background daemon with invisible effects.
+Consolidation, conflict detection, and forgetting are journaled operations over the store. None runs as a background job with invisible effects.
 
-**Consolidation** distills N records into one `summary` naming its sources in provenance and superseding them. It runs as a durable task — leased, retried, journaled — because consolidation over a large scope is exactly the work that must survive a crash mid-pass.
+**Consolidation** turns several records into one `summary` that names its sources in provenance and supersedes them. The core builds that record with `consolidation_summary`. The server's first pass, in `rusty-server/src/memory_consolidation.rs`, is mechanical: it folds near-duplicate notes under one key into a summary with no model calls, never touches a person's own notes or corrections, and runs after 10 new notes have landed since the last pass.
 
-**Conflict detection** flags records that share a key, overlap in validity, and contradict. It flags; it never auto-resolves. Zep and Mem0 resolve contradictions inside the ingestion pipeline with a model, which is precisely the silent-mutation pattern the learning rule forbids. Detection is evidence; resolution is governance.
+**Conflict detection** (`detect_conflicts`) flags live records that share a key, overlap in validity, and disagree. It flags and never resolves. The design contrasts this with pipelines that resolve contradictions inside ingestion using a model, which is a silent mutation. Detection produces a review item; a person or a governed candidate resolves it.
 
-**Forgetting** is real deletion with a receipt. `forget(memory_id)` — or `forget_scope` for an erasure request — removes the record, walks `supersedes` in reverse to invalidate summaries that named it as a source, clears derived caches, and journals a tombstone: the id, the scope, the reason (`expired` / `retracted` / `erasure_request`), the dependent invalidations — metadata, never the forgotten content. The machine-unlearning literature's point applies directly: erasing the row while leaving derived artifacts is not forgetting. One boundary is drawn openly: memory records are derived state and erasable; run journals are the system's own hash-chained evidence and are not.
+**Forgetting** deletes and leaves a receipt. `plan_forget` computes the erasure before anything is removed: the target records plus every summary that named them as a source, transitively. The server exposes `POST /memory/forget` and `POST /memory/forget_scope`. The receipt is a journaled `MemoryForget` tombstone carrying the id, scope, reason (`expired`, `retracted`, or `erasure_request`), and the dependent invalidations. The tombstone type has no content field, so the forgotten bytes cannot leak through it. The boundary is explicit: memory records are derived state and can be erased; run journals are hash-chained evidence and cannot.
+
+```mermaid
+flowchart LR
+    W["write request"] --> G{"scope gate<br>check_memory_scope_gate"}
+    G -->|"refused"| E["400 / 403 / 404"]
+    G -->|"allowed"| S["MemoryRecord stored<br>journaled MemoryWrite"]
+    S --> Q["MemoryQuery + ContextBudget"]
+    Q --> A["assembly journaled<br>as MemoryRead output"]
+    S --> F["plan_forget"]
+    F --> T["MemoryForget tombstone<br>(no content)"]
+```
 
 ::: tip Key takeaways
-- Memory is governed runtime state: scope, provenance, and no-silent-rewrite are enforced by the write path, not by convention.
-- `MemoryRecord` is content-addressed and immutable; change is supersession, never in-place update.
-- Tiers are expressed as scopes (`run`/`agent`/`team`/`user`/`tenant`) and kinds (`fact`/`preference`/`example`/`summary`), not separate stores.
-- Retrieval is structural and token-budgeted with journaled assembly; vector search is deferred and the design says what that costs.
-- Forgetting deletes dependents and journals a tombstone; erasure is auditable.
+- Memory is a governed record store: the server's scope gate, mandatory provenance, and no in-place updates.
+- `MemoryRecord` is content-addressed; a change is a new record that supersedes the old one.
+- Scopes (`run`, `agent`, `team`, `user`, `tenant`) and kinds (`fact`, `preference`, `example`, `summary`) organize memory. The tier overlay on `main` derives working, episodic, and semantic tiers from them.
+- Retrieval is structural and token-budgeted, and the assembly is journaled. There is no vector search yet.
+- Forgetting removes dependent summaries too and journals a content-free tombstone.
 :::
 
 **Further reading**
 
-- [docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md) — the R0.8 design: record model, write path, retrieval, and the named research lineage
-- [rusty-core/src/memory.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/memory.rs) — `MemoryRecord`, `MemoryQuery`, `ContextBudget`, `Correction`
-- [docs/agent-fabric-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/agent-fabric-design.md) — the `StateScope` taxonomy memory scopes extend
+- [docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md): the R0.8 design, including the research lineage
+- [rusty-core/src/memory.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/memory.rs): `MemoryRecord`, `MemoryQuery`, `ContextBudget`, `Correction`, `plan_forget`
+- [rusty-core/src/memory_tiers.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/memory_tiers.rs): the tier overlay and key grammar on `main`
+- [docs/agent-fabric-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/agent-fabric-design.md): the `StateScope` taxonomy memory scopes map onto
