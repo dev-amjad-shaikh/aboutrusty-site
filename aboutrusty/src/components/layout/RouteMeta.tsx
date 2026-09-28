@@ -34,7 +34,8 @@ function clip(s: string, max = 180): string {
   return end > 80 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "") + "…";
 }
 
-function metaFor(pathname: string, search: string): [string, string] {
+function metaFor(rawPath: string, search: string): [string, string] {
+  const pathname = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (pathname === "/") return [HOME_TITLE, HOME_DESC];
 
   const lesson = pathname.match(/^\/learn\/([^/]+)$/);
