@@ -1,27 +1,24 @@
-import { BrandIntro } from "@/sections/landing/hero/BrandIntro";
-import { ReelHero } from "@/sections/landing/hero/ReelHero";
-import { SignalStrip } from "@/sections/landing/hero/SignalStrip";
-import { WhyRusty } from "@/sections/landing/WhyRusty";
-import { HowItWorks } from "@/sections/landing/HowItWorks";
+import { Hero } from "@/sections/landing/home/Hero";
+import { WhatItIs, WhyBuilt } from "@/sections/landing/home/WhatWhy";
+import { HowItWorksHome } from "@/sections/landing/home/HowItWorksHome";
+import { PlatformStack } from "@/sections/landing/home/PlatformStack";
+import { StudioShowcase } from "@/sections/landing/home/StudioShowcase";
 import { FeatureGrid } from "@/sections/landing/FeatureGrid";
-import { ComponentsTable } from "@/sections/landing/ComponentsTable";
-import { Comparison } from "@/sections/landing/Comparison";
 import { Limitations } from "@/sections/landing/Limitations";
 import { FinalCta } from "@/sections/landing/FinalCta";
 
 export default function LandingPage() {
   return (
     <div>
-      <BrandIntro />
-      <ReelHero />
-      <SignalStrip />
-      <div id="runtime">
-        <WhyRusty />
-      </div>
-      <HowItWorks />
+      <Hero />
+      <main className="mx-auto max-w-[1240px] px-7">
+        <WhatItIs />
+        <WhyBuilt />
+        <HowItWorksHome />
+        <PlatformStack />
+        <StudioShowcase />
+      </main>
       <FeatureGrid />
-      <Comparison />
-      <ComponentsTable />
       <Limitations />
       <FinalCta />
     </div>

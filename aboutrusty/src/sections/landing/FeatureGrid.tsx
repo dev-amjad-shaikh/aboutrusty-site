@@ -23,7 +23,7 @@ import {
   Fingerprint,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { SectionHeading } from "./SectionHeading";
+import { Kicker, Reveal, SectionTitle } from "./home/primitives";
 
 interface Feature {
   icon: LucideIcon;
@@ -136,49 +136,66 @@ const FEATURES: Feature[] = [
 
 export function FeatureGrid() {
   return (
-    <section className="mx-auto max-w-6xl px-4 py-24 sm:px-6 sm:py-32">
-      <SectionHeading
-        eyebrow="Capabilities"
-        title="One engine, one server, the whole platform."
-        description="State graph, durable checkpointing, interrupts, and resumable execution as first-class engine primitives — plus remote and sandboxed WASM nodes, a full server surface, and zero-dependency SDKs."
-      />
-      <div className="mt-14 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-        {FEATURES.map((feature, i) => (
-          <div
-            key={feature.title}
-            className="flex flex-col gap-4 rounded-xl border bg-card p-5 transition-colors hover:border-input"
+    <section className="mx-auto max-w-[1240px] px-7">
+      <Reveal
+        className="flex flex-col gap-10 border-t py-[90px]"
+        style={{ borderColor: "rgba(236,150,96,.10)" }}
+      >
+        <div className="flex max-w-[720px] flex-col gap-3.5">
+          <Kicker>06 · Capabilities</Kicker>
+          <SectionTitle>One engine, one server, the whole platform.</SectionTitle>
+          <p className="m-0 text-[17px] leading-[1.7] text-[#cfc3b8]">
+            State graph, durable checkpointing, interrupts, and resumable
+            execution as first-class engine primitives — plus remote and
+            sandboxed WASM nodes, a full server surface, and zero-dependency
+            SDKs.
+          </p>
+        </div>
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((feature, i) => (
+            <div
+              key={feature.title}
+              className="flex flex-col gap-4 rounded-[14px] border p-5 transition-colors"
+              style={{ borderColor: "rgba(236,150,96,.14)", background: "rgba(255,236,214,.03)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "rgba(240,134,43,.4)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "rgba(236,150,96,.14)";
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-code text-[10px] font-medium tracking-[0.14em] text-[#6f675f]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <feature.icon
+                  size={16}
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                  className="text-primary"
+                />
+              </div>
+              <div>
+                <h3 className="m-0 text-[16px] font-normal leading-snug text-[#f7ece4]">
+                  {feature.title}
+                </h3>
+                <p className="mb-0 mt-2 text-[14px] leading-[1.6] text-[#b8b0a8]">
+                  {feature.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="m-0 text-center">
+          <Link
+            to="/learn/architecture"
+            className="inline-flex items-center gap-1.5 text-[15px] text-primary no-underline transition-colors hover:text-[#fb9a3f]"
           >
-            <div className="flex items-center justify-between">
-              <span className="font-code text-[10px] font-medium tracking-[0.14em] text-muted-foreground">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <feature.icon
-                size={16}
-                strokeWidth={1.75}
-                aria-hidden="true"
-                className="text-primary"
-              />
-            </div>
-            <div>
-              <h3 className="font-display text-base font-bold leading-snug">
-                {feature.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {feature.body}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-10 text-center">
-        <Link
-          to="/learn/architecture"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          The execution model underneath it all — the anatomy of a run
-          <ArrowRight size={14} />
-        </Link>
-      </p>
+            The execution model underneath it all — the anatomy of a run
+            <ArrowRight size={14} />
+          </Link>
+        </p>
+      </Reveal>
     </section>
   );
 }

@@ -219,7 +219,7 @@ export function TransportControls({
                   <span
                     className={`rounded-md border px-2 py-1 font-code text-[10px] uppercase tracking-[0.08em] transition-colors ${
                       isCurrent
-                        ? "border-primary bg-primary text-primary-foreground shadow-[0_0_16px_rgba(255,107,53,0.25)]"
+                        ? "border-primary bg-primary text-primary-foreground shadow-[0_0_16px_rgba(240,134,43,0.25)]"
                         : isPast
                           ? "border-transparent text-muted-foreground/50 line-through decoration-muted-foreground/40"
                           : "border-border text-muted-foreground"

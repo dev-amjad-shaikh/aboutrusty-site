@@ -12,7 +12,7 @@ const DOT_STYLES: Record<DotTone, string> = {
   // Glow alphas can't come from tokens — rust/signal rgba only, per theme rules.
   success: "bg-success shadow-[0_0_9px_rgba(146,231,192,0.42)]",
   warning: "bg-warning",
-  rust: "bg-primary shadow-[0_0_9px_rgba(255,107,53,0.5)]",
+  rust: "bg-primary shadow-[0_0_9px_rgba(240,134,43,0.5)]",
 };
 
 /**

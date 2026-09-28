@@ -96,7 +96,7 @@ export function GraphView({
             key={routeAnimKey}
             r={4}
             className="fill-primary"
-            style={{ filter: "drop-shadow(0 0 6px rgba(255,107,53,0.7))" }}
+            style={{ filter: "drop-shadow(0 0 6px rgba(240,134,43,0.7))" }}
           >
             <animateMotion dur="0.7s" path={d} fill="freeze" />
             <animate
@@ -136,7 +136,7 @@ export function GraphView({
           }
           style={
             isActive
-              ? { filter: "drop-shadow(0 0 9px rgba(255,107,53,0.45))" }
+              ? { filter: "drop-shadow(0 0 9px rgba(240,134,43,0.45))" }
               : undefined
           }
           strokeWidth={isActive ? 1.8 : isNext ? 1.4 : 1}

@@ -16,7 +16,7 @@ const FRAME_COLORS: Record<SimFrame["event"], string> = {
   metadata: "text-white/40",
   updates: "text-amber-300",
   values: "text-orange-300",
-  end: "text-[#e8845c]", // light rust — readable on the charcoal surface
+  end: "text-[#ffc7a6]", // light rust — readable on the charcoal surface
 };
 
 const TRUNCATE_AT = 140;

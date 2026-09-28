@@ -352,7 +352,7 @@ export function PlaygroundPage() {
               onClick={() => handleScenario(sc.id)}
               className={`rounded-lg border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
                 selected
-                  ? "border-primary/60 bg-accent/20 shadow-[0_0_24px_rgba(255,107,53,0.15)]"
+                  ? "border-primary/60 bg-accent/20 shadow-[0_0_24px_rgba(240,134,43,0.15)]"
                   : "border-border bg-card hover:border-muted-foreground/40 hover:bg-secondary/50"
               }`}
             >

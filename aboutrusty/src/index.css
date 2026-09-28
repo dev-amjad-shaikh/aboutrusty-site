@@ -2,55 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Rusty Relay Riveted — custom display face (Bold only; lowercase maps to uppercase forms) */
-@font-face {
-  font-family: "Rusty Relay Riveted";
-  src: url("/fonts/rusty-relay-riveted-bold.woff2") format("woff2"),
-    url("/fonts/rusty-relay-riveted-bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 @layer base {
   :root {
-    /* Rusty — Ink theme (reference: rusty-immersive-draft) */
-    --background: 210 20% 4%; /* ink #080a0c */
-    --foreground: 100 7% 93%; /* paper #edf0ec */
-    --card: 210 15% 6%; /* ink-2 #0d1013 */
-    --card-foreground: 100 7% 93%;
-    --popover: 210 16% 9%; /* ink-3 #12161a */
-    --popover-foreground: 100 7% 93%;
-    --primary: 16 100% 60%; /* rust #ff6b35 */
-    --primary-foreground: 210 20% 4%;
-    --secondary: 210 12% 12%;
-    --secondary-foreground: 100 7% 93%;
-    --muted: 210 10% 14%;
-    --muted-foreground: 170 3% 59%; /* #949a99 */
-    --accent: 16 45% 15%; /* rust-tinted dark surface */
-    --accent-foreground: 16 100% 73%; /* rust-soft #ff9a73 */
-    --destructive: 0 70% 55%;
-    --destructive-foreground: 100 7% 93%;
-    --border: 165 5% 15%; /* ~ rgba(239,242,238,.11) on ink */
-    --input: 165 4% 21%; /* ~ rgba(239,242,238,.19) on ink */
-    --ring: 16 100% 60%;
-    --radius: 0.5625rem; /* 9px */
-    --sidebar-background: 210 15% 6%;
-    --sidebar-foreground: 100 7% 93%;
-    --sidebar-primary: 16 100% 60%;
-    --sidebar-primary-foreground: 210 20% 4%;
-    --sidebar-accent: 210 12% 12%;
-    --sidebar-accent-foreground: 16 100% 73%;
-    --sidebar-border: 165 5% 15%;
-    --sidebar-ring: 16 100% 60%;
-    /* Code surfaces (ink terminal) */
-    --code-bg: 210 19% 5%;
-    --code-foreground: 120 6% 86%;
+    /* Rusty — warm ember theme (reference: the Rusty lesson pages) */
+    --background: 15 18% 4%; /* #0d0a09 */
+    --foreground: 29 38% 88%; /* #ece0d5 */
+    --card: 17 26% 5%; /* #100b09 */
+    --card-foreground: 29 38% 88%;
+    --popover: 25 30% 6%; /* #161009 */
+    --popover-foreground: 29 38% 88%;
+    --primary: 28 87% 55%; /* rust #f0862b */
+    --primary-foreground: 23 100% 8%; /* #2a1000 */
+    --secondary: 25 22% 10%;
+    --secondary-foreground: 29 38% 88%;
+    --muted: 24 18% 12%;
+    --muted-foreground: 30 9% 60%; /* #a39a91 */
+    --accent: 24 55% 13%; /* rust-tinted dark surface */
+    --accent-foreground: 22 100% 83%; /* rust-soft #ffc7a6 */
+    --destructive: 13 79% 72%; /* #f09a80 */
+    --destructive-foreground: 23 100% 8%;
+    --border: 23 35% 13%; /* ~ rgba(236,150,96,.14) on #0d0a09 */
+    --input: 25 36% 16%; /* ~ rgba(236,150,96,.20) on #0d0a09 */
+    --ring: 28 87% 55%;
+    --radius: 0.625rem; /* 10px */
+    --sidebar-background: 17 26% 5%;
+    --sidebar-foreground: 29 38% 88%;
+    --sidebar-primary: 28 87% 55%;
+    --sidebar-primary-foreground: 23 100% 8%;
+    --sidebar-accent: 25 22% 10%;
+    --sidebar-accent-foreground: 22 100% 83%;
+    --sidebar-border: 23 35% 13%;
+    --sidebar-ring: 28 87% 55%;
+    /* Code surfaces (warm terminal) */
+    --code-bg: 20 25% 3%;
+    --code-foreground: 29 27% 82%; /* #ddd0c4 */
     /* Status */
-    --success: 154 55% 62%; /* signal green, tuned for ink */
-    --success-foreground: 210 20% 4%;
-    --warning: 32 85% 55%;
-    --warning-foreground: 210 20% 4%;
+    --success: 130 38% 73%; /* #9fd4a8 */
+    --success-foreground: 23 100% 8%;
+    --warning: 31 87% 71%; /* #f5b774 */
+    --warning-foreground: 23 100% 8%;
   }
 }
 
@@ -58,44 +48,45 @@
   * {
     @apply border-border;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    font-family: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
       Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 300;
   }
   ::selection {
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
+    background: rgba(240, 134, 43, 0.28);
+    color: #fff3ea;
   }
 }
 
 @layer utilities {
   .font-display {
-    font-family: "Rusty Relay Riveted", "Manrope", ui-sans-serif, system-ui,
-      -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    letter-spacing: 0.02em;
+    font-family: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      Roboto, Arial, sans-serif;
+    letter-spacing: -0.025em;
   }
   .font-code {
-    font-family: "DM Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-      Consolas, "Liberation Mono", monospace;
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono",
+      Menlo, Consolas, "Liberation Mono", monospace;
   }
   .bg-code {
     background-color: hsl(var(--code-bg));
     color: hsl(var(--code-foreground));
   }
-  /* Ambient chrome from the reference: faint grid + film grain */
-  .ambient-grid {
-    background-image: linear-gradient(
-        rgba(255, 255, 255, 0.026) 1px,
-        transparent 1px
-      ),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: linear-gradient(to bottom, black, transparent 88%);
-    -webkit-mask-image: linear-gradient(to bottom, black, transparent 88%);
+  /* Warm hairline used on cards and panels across the reference design */
+  .border-hairline {
+    border-color: rgba(236, 150, 96, 0.16);
   }
-  .ambient-noise {
-    opacity: 0.04;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.65'/%3E%3C/svg%3E");
+  /* Faint warm glow used sparingly behind heroes */
+  .ambient-glow {
+    background: radial-gradient(
+      closest-side,
+      rgba(240, 134, 43, 0.1),
+      transparent
+    );
   }
 }

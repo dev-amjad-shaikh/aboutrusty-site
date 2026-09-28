@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Builder — Rusty</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="mosaic/mosaic.css">
+  <link rel="stylesheet" href="mosaic/components.css">
+  <link rel="stylesheet" href="builder.css">
+  <link rel="stylesheet" href="flows.css">
+  <link rel="stylesheet" href="screens.css">
+  <link rel="stylesheet" href="features.css">
+  <link rel="stylesheet" href="theme-knot.css">
+  <link rel="stylesheet" href="theme-rusty.css">
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#0d0a09">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#0d0a09"/>
+      <rect x="470" y="250" width="260" height="220" rx="34" fill="#1c1917"/>
+      <circle cx="545" cy="350" r="22" fill="#78716c"/>
+      <circle cx="655" cy="350" r="22" fill="#78716c"/>
+      <rect x="535" y="410" width="130" height="16" rx="8" fill="#faf9f7" opacity="0.85"/>
+      <rect x="585" y="200" width="30" height="50" rx="15" fill="#1c1917"/>
+      <circle cx="600" cy="190" r="20" fill="#78716c"/>
+      <rect x="430" y="500" width="340" height="14" rx="7" fill="#1c1917" opacity="0.18"/>
+      <rect x="480" y="534" width="240" height="14" rx="7" fill="#1c1917" opacity="0.12"/>
+    </svg>
+  </template>
+
+  <div class="shell" data-screen-label="Agent Builder">
+
+    <!-- ═══════════ ICON STRIP ═══════════ -->
+    <nav class="strip">
+      <div class="strip-mark" title="Rusty"><img src="assets/rusty-mark.png" alt="Rusty"></div>
+      <div class="strip-btn" data-view="home" title="Home"><i class="ti ti-layout-dashboard"></i></div>
+      <div class="strip-btn active" data-view="agents" title="Agents"><i class="ti ti-robot"></i></div>
+      <div class="strip-btn" data-view="skills" title="Skills"><i class="ti ti-puzzle"></i></div>
+      <div class="strip-btn" data-view="tools" title="Tools"><i class="ti ti-tool"></i></div>
+      <div class="strip-btn" data-view="connectors" title="Connectors"><i class="ti ti-plug-connected"></i></div>
+      <div class="strip-btn" data-view="knowledge" title="Knowledge"><i class="ti ti-database"></i></div>
+      <div class="strip-btn" data-view="evals" title="Evals"><i class="ti ti-test-pipe"></i></div>
+      <div class="strip-btn" data-view="models" title="LLM Gateway"><i class="ti ti-cpu"></i></div>
+      <div class="strip-btn" data-view="analytics" title="Observability"><i class="ti ti-chart-dots-3"></i></div>
+      <div class="strip-sp"></div>
+      <div class="strip-btn" data-flow="notifications" title="Notifications"><i class="ti ti-bell"></i><span class="strip-dot"></span></div>
+      <div class="strip-btn" data-flow="settings" title="Settings"><i class="ti ti-settings"></i></div>
+    </nav>
+
+    <!-- ═══════════ BUILDER VIEW (Agents) ═══════════ -->
+    <div class="view builder-view active" id="view-agents">
+    <!-- ═══════════ AGENT LIST RAIL ═══════════ -->
+    <aside class="rail">
+      <div class="rail-head">
+        <div class="rail-title">Agents</div>
+        <div class="m-btn icon ghost sm" title="Search" data-flow="rail-search"><i class="ti ti-search"></i></div>
+      </div>
+      <div class="rail-search" hidden><div class="lib-search"><i class="ti ti-search"></i><input placeholder="Filter agents…" data-rail-filter></div></div>
+      <div class="rail-new">
+        <button class="m-btn primary sm block" data-flow="new-agent"><i class="ti ti-plus"></i> New agent</button>
+      </div>
+      <div class="rail-list">
+        <div class="rl-group-label"><i class="ti ti-chevron-down" style="font-size:13px"></i> Drafts <span class="gc">2</span></div>
+        <div class="ag-link active" data-agent="support-triage">
+          <div class="ag-tile-sm" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-headset"></i></div>
+          <div class="nm">Support Triage</div>
+          <span class="st" style="background:var(--warn)"></span>
+        </div>
+        <div class="ag-link" data-agent="revenue-analyst">
+          <div class="ag-tile-sm" style="background:var(--cat-plum-bg); color:var(--cat-plum)"><i class="ti ti-chart-pie"></i></div>
+          <div class="nm">Revenue Analyst</div>
+          <span class="st" style="background:var(--warn)"></span>
+        </div>
+
+        <div class="rl-group-label"><i class="ti ti-chevron-down" style="font-size:13px"></i> Published <span class="gc">4</span></div>
+        <div class="ag-link" data-agent="ontology-curator">
+          <div class="ag-tile-sm" style="background:var(--cat-blue-bg); color:var(--cat-blue)"><i class="ti ti-hierarchy-2"></i></div>
+          <div class="nm">Ontology Curator</div>
+          <span class="st" style="background:var(--good)"></span>
+        </div>
+        <div class="ag-link" data-agent="outbound-sdr">
+          <div class="ag-tile-sm" style="background:var(--cat-amber-bg); color:var(--cat-amber)"><i class="ti ti-mail-fast"></i></div>
+          <div class="nm">Outbound SDR</div>
+          <span class="st" style="background:var(--good)"></span>
+        </div>
+        <div class="ag-link" data-agent="bug-reproducer">
+          <div class="ag-tile-sm" style="background:var(--cat-rose-bg); color:var(--cat-rose)"><i class="ti ti-bug"></i></div>
+          <div class="nm">Bug Reproducer</div>
+          <span class="st" style="background:var(--good)"></span>
+        </div>
+        <div class="ag-link" data-agent="invoice-reconciler">
+          <div class="ag-tile-sm" style="background:var(--cat-orange-bg); color:var(--cat-orange)"><i class="ti ti-file-invoice"></i></div>
+          <div class="nm">Invoice Reconciler</div>
+          <span class="st" style="background:var(--good)"></span>
+        </div>
+      </div>
+      <div class="rail-foot">
+        <span class="sb-foot-meta" style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:#5fbf7f;box-shadow:0 0 8px rgba(95,191,127,.6)"></span>development</span>
+        <span class="sb-foot-meta" style="margin-left:auto">6 agents</span>
+      </div>
+    </aside>
+
+    <!-- ═══════════ WORKSPACE ═══════════ -->
+    <div class="work">
+
+      <!-- Top bar -->
+      <div class="work-top">
+        <div class="crumbs">
+          <span>Agents</span>
+          <i class="ti ti-chevron-right sep"></i>
+          <b>Support Triage</b>
+          <span class="m-badge warn sm"><span class="dot"></span> Draft</span>
+        </div>
+        <div class="top-sp"></div>
+        <div class="save-state" id="saveState"><span class="d"></span> <span class="txt">Saved 2s ago</span></div>
+        <div class="top-actions">
+          <button class="m-btn ghost sm" data-flow="versions"><i class="ti ti-history"></i> Versions</button>
+          <button class="m-btn secondary sm" data-flow="preview"><i class="ti ti-eye"></i> Preview</button>
+          <button class="m-btn primary sm" data-flow="publish"><i class="ti ti-rocket"></i> Publish</button>
+        </div>
+      </div>
+
+      <!-- ──────── CONFIG COLUMN ──────── -->
+      <div class="config">
+        <div class="config-inner">
+
+          <!-- Identity hero -->
+          <div class="hero">
+            <div class="hero-tile" data-flow="identity" title="Edit identity" style="background:var(--cat-teal-bg); color:var(--cat-teal)">
+              <i class="ti ti-headset"></i>
+              <span class="edit-dot"><i class="ti ti-pencil"></i></span>
+            </div>
+            <div class="hero-main">
+              <div class="hero-name" contenteditable="true" spellcheck="false">Support Triage</div>
+              <div class="hero-handle">@<b>support-triage</b> · Routes inbound tickets, drafts replies, and escalates when it isn't sure.</div>
+            </div>
+          </div>
+
+          <!-- Goal & performance -->
+          <div class="goal-card" id="goalCard"></div>
+
+          <!-- Readiness -->
+          <div class="readiness" id="readiness" data-flow="readiness">
+            <div class="block-ic" style="background:var(--accent-bg); color:var(--accent); width:34px; height:34px"><i class="ti ti-progress-check"></i></div>
+            <div class="rl">
+              <div class="rt">Agent readiness — 6 of 9 steps</div>
+              <div class="rs">Add an evaluation goal and connect a deployment channel to publish.</div>
+            </div>
+            <div style="width:120px">
+              <div class="m-progress accent"><span class="bar" style="width:67%"></span></div>
+            </div>
+            <i class="ti ti-chevron-right" style="color:var(--ink-400)"></i>
+          </div>
+
+          <!-- Self-identified improvements -->
+          <div class="m-card block" data-block data-section="improvements" id="improvements">
+            <div class="block-head">
+              <div class="block-ic"><i class="ti ti-sparkles"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Suggested improvements <span class="cnt">0</span></div>
+                <div class="block-sub">Found by the agent from its own runs — approve to apply</div>
+              </div>
+              <div class="head-act"><button class="m-btn ghost sm" data-rescan><i class="ti ti-refresh"></i> Re-scan runs</button><i class="ti ti-chevron-down chev"></i></div>
+            </div>
+            <div class="block-body" data-imp-body></div>
+          </div>
+
+          <!-- ① MODEL & BEHAVIOR -->
+          <div class="m-card block" data-block data-section="model">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--brand-soft); color:var(--ink-800)"><i class="ti ti-cpu"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Model &amp; behavior</div>
+                <div class="block-sub">The reasoning engine and how freely it responds</div>
+              </div>
+              <div class="head-act"><i class="ti ti-chevron-down chev"></i></div>
+            </div>
+            <div class="block-body">
+              <div class="frow two">
+                <div>
+                  <div class="f-mini-label">Model</div>
+                  <div class="model-pick" data-flow="model" data-slot="primary">
+                    <div class="model-logo" style="background:var(--accent)"><i class="ti ti-sparkles"></i></div>
+                    <div><div class="mn">Claude Sonnet 4.5</div><div class="mp">anthropic · 200k ctx</div></div>
+                    <i class="ti ti-selector" style="margin-left:auto; color:var(--ink-400)"></i>
+                  </div>
+                </div>
+                <div>
+                  <div class="f-mini-label">Fallback model</div>
+                  <div class="model-pick" data-flow="model" data-slot="fallback">
+                    <div class="model-logo" style="background:var(--cat-blue)"><i class="ti ti-circle-dashed"></i></div>
+                    <div><div class="mn">GPT-4o mini</div><div class="mp">openai · cost saver</div></div>
+                    <i class="ti ti-selector" style="margin-left:auto; color:var(--ink-400)"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="frow two" style="margin-top:18px">
+                <div>
+                  <div class="f-mini-label">Temperature <span class="item-tag" style="margin-left:auto">balanced</span></div>
+                  <div class="param"><input type="range" class="m-slider" min="0" max="100" value="30"><span class="pv">0.3</span></div>
+                </div>
+                <div>
+                  <div class="f-mini-label">Max reasoning steps</div>
+                  <div class="param"><input type="range" class="m-slider" min="1" max="25" value="12"><span class="pv">12</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ② INSTRUCTIONS -->
+          <div class="m-card block" data-block data-section="instructions">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-blue-bg); color:var(--cat-blue)"><i class="ti ti-file-text"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Instructions</div>
+                <div class="block-sub">The system prompt — who the agent is and how it works</div>
+              </div>
+              <div class="head-act"><i class="ti ti-chevron-down chev"></i></div>
+            </div>
+            <div class="block-body">
+              <div class="instr-tabs">
+                <div class="m-seg">
+                  <button class="on" data-instr="edit">Edit</button>
+                  <button data-instr="vars">Variables</button>
+                </div>
+                <button class="m-btn ghost sm" style="margin-left:auto" data-flow="improve" data-instr-pane="edit"><i class="ti ti-wand"></i> Improve with AI</button>
+              </div>
+              <div data-instr-pane="edit">
+              <div class="instr-editor" contenteditable="true" spellcheck="false">You are <span class="var">{{agent_name}}</span>, the first responder for inbound customer tickets at <span class="var">{{company}}</span>.
+
+For every ticket:
+1. Classify it — billing, bug, how-to, or feedback — and set a priority.
+2. Search the knowledge base before answering. Never invent policy.
+3. Draft a reply in a warm, concise tone. Keep it under 120 words.
+4. If confidence is below 0.7, or the customer is angry, escalate to a human and explain why.
+
+You may act on behalf of the user, but you NEVER issue refunds over $50 without approval.</div>
+              <div class="instr-foot">
+                <span class="tk"><i class="ti ti-square-rounded-letter-t" style="font-size:13px; vertical-align:-2px"></i> 412 tokens</span>
+                <span class="tk">·</span>
+                <span class="tk">2 variables</span>
+                <div class="var-chips">
+                  <span class="m-chip"><i class="ti ti-variable" style="font-size:13px; color:var(--accent)"></i> agent_name</span>
+                  <span class="m-chip"><i class="ti ti-variable" style="font-size:13px; color:var(--accent)"></i> company</span>
+                </div>
+              </div>
+              </div><!-- /edit pane -->
+
+              <div data-instr-pane="vars" hidden>
+                <div class="vars-panel">
+                  <div class="vars-intro"><i class="ti ti-info-circle"></i><div>Variables are placeholders like <code style="font-family:var(--font-mono)">{{company}}</code> in the prompt. They're filled in fresh on <b>every run</b> — from the agent's settings, the trigger payload, or the test values below — so one agent serves many customers without editing the prompt.</div></div>
+
+                  <div class="vrow">
+                    <div class="vk"><span class="vtok">{{agent_name}}</span></div>
+                    <div class="vmeta"><div class="vdesc">The agent's display name</div><div class="vsrc"><i class="ti ti-settings" style="font-size:12px"></i> Source: Agent setting</div></div>
+                    <div class="vtest"><div class="vlbl">TEST VALUE</div><input class="m-input" value="Support Triage"></div>
+                  </div>
+                  <div class="vrow">
+                    <div class="vk"><span class="vtok">{{company}}</span></div>
+                    <div class="vmeta"><div class="vdesc">Customer's company, resolved per ticket</div><div class="vsrc"><i class="ti ti-bolt" style="font-size:12px"></i> Source: Trigger payload · <span class="mono" style="font-family:var(--font-mono)">ticket.org</span></div></div>
+                    <div class="vtest"><div class="vlbl">TEST VALUE</div><input class="m-input" value="Acme Co."></div>
+                  </div>
+
+                  <div class="add-row" style="margin-top:14px" data-add-var><i class="ti ti-plus"></i> Add variable</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ③ SKILLS -->
+          <div class="m-card block" data-block data-section="skills">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-plum-bg); color:var(--cat-plum)"><i class="ti ti-puzzle"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Skills <span class="cnt">2</span></div>
+                <div class="block-sub">Reusable procedures that bundle steps and tools together</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Add</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="skill">
+                <div class="skill-top">
+                  <div class="item-ic" style="background:var(--cat-plum-bg); color:var(--cat-plum)"><i class="ti ti-route"></i></div>
+                  <div class="item-body">
+                    <div class="item-name">Triage &amp; route ticket</div>
+                    <div class="item-desc">Classify intent, set priority, and assign to the right queue.</div>
+                  </div>
+                  <div class="item-act">
+                    <span class="m-badge good sm"><span class="dot"></span> Active</span>
+                    <button class="m-btn icon ghost sm"><i class="ti ti-dots"></i></button>
+                  </div>
+                </div>
+                <div class="skill-tools">
+                  <span class="lbl">Uses</span>
+                  <span class="m-chip"><i class="ti ti-search" style="font-size:12px"></i> search_kb</span>
+                  <span class="m-chip"><i class="ti ti-tag" style="font-size:12px"></i> classify</span>
+                  <span class="m-chip"><i class="ti ti-arrows-split" style="font-size:12px"></i> assign_queue</span>
+                </div>
+              </div>
+              <div class="skill">
+                <div class="skill-top">
+                  <div class="item-ic" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-message-2-bolt"></i></div>
+                  <div class="item-body">
+                    <div class="item-name">Draft customer reply</div>
+                    <div class="item-desc">Compose a grounded, on-brand response with citations.</div>
+                  </div>
+                  <div class="item-act">
+                    <span class="m-badge good sm"><span class="dot"></span> Active</span>
+                    <button class="m-btn icon ghost sm"><i class="ti ti-dots"></i></button>
+                  </div>
+                </div>
+                <div class="skill-tools">
+                  <span class="lbl">Uses</span>
+                  <span class="m-chip"><i class="ti ti-search" style="font-size:12px"></i> search_kb</span>
+                  <span class="m-chip"><i class="ti ti-pencil" style="font-size:12px"></i> draft_reply</span>
+                </div>
+              </div>
+              <div class="add-row"><i class="ti ti-plus"></i> Compose a skill</div>
+            </div>
+          </div>
+
+          <!-- ④ TOOLS -->
+          <div class="m-card block" data-block data-section="tools">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--accent-bg); color:var(--accent)"><i class="ti ti-tool"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Tools <span class="cnt">5</span></div>
+                <div class="block-sub">Atomic functions the agent can call mid-run</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Add</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-blue-bg); color:var(--cat-blue)"><i class="ti ti-search"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">search_kb</span></div>
+                  <div class="item-desc">Semantic search over the help center &amp; past resolved tickets.</div>
+                  <div class="item-meta"><span class="item-tag">retrieval</span><span class="item-tag">2 args</span></div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-tag"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">classify</span></div>
+                  <div class="item-desc">Label a ticket by intent and urgency using a trained router.</div>
+                  <div class="item-meta"><span class="item-tag">function</span><span class="item-tag">1 arg</span></div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-amber-bg); color:var(--cat-amber)"><i class="ti ti-pencil"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">draft_reply</span></div>
+                  <div class="item-desc">Generate a customer-facing draft and stage it for review.</div>
+                  <div class="item-meta"><span class="item-tag">function</span><span class="item-tag">human-in-loop</span></div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-rose-bg); color:var(--cat-rose)"><i class="ti ti-arrow-up-right-circle"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">escalate</span></div>
+                  <div class="item-desc">Hand the ticket to a human with full context and a reason.</div>
+                  <div class="item-meta"><span class="item-tag">action</span><span class="item-tag">approval</span></div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--bg-muted); color:var(--ink-500)"><i class="ti ti-world-search"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">web_search</span></div>
+                  <div class="item-desc">Public web lookup. Off by default for support agents.</div>
+                  <div class="item-meta"><span class="item-tag">retrieval</span><span class="item-tag">external</span></div>
+                </div>
+                <div class="item-act"><div class="m-switch" data-switch></div></div>
+              </div>
+              <div class="add-row"><i class="ti ti-plus"></i> Add tool from catalog</div>
+            </div>
+          </div>
+
+          <!-- ⑤ CONNECTORS -->
+          <div class="m-card block" data-block data-section="connectors">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-plug-connected"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Connectors <span class="cnt">3</span></div>
+                <div class="block-sub">External services the agent reaches through MCP</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Connect</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="item">
+                <div class="item-ic logo" style="background:#4A154B; color:#fff"><i class="ti ti-brand-slack"></i></div>
+                <div class="item-body">
+                  <div class="item-name">Slack <span class="m-badge good sm"><span class="dot"></span> Connected</span></div>
+                  <div class="item-desc">Posts escalations to #support-escalations and pings on-call.</div>
+                  <div class="item-meta"><span class="item-tag auth-tag"><i class="ti ti-shield-lock"></i> OAuth 2.0</span><span class="item-tag">3 scopes</span><span class="item-tag">workspace: nexus</span></div>
+                </div>
+                <div class="item-act"><button class="m-btn secondary sm">Manage</button></div>
+              </div>
+              <div class="item">
+                <div class="item-ic logo" style="background:#24292F; color:#fff"><i class="ti ti-brand-github"></i></div>
+                <div class="item-body">
+                  <div class="item-name">GitHub <span class="m-badge good sm"><span class="dot"></span> Connected</span></div>
+                  <div class="item-desc">Opens issues for confirmed bugs and links the originating ticket.</div>
+                  <div class="item-meta"><span class="item-tag auth-tag"><i class="ti ti-shield-lock"></i> OAuth 2.0</span><span class="item-tag">repo: nexus/app</span><span class="item-tag">issues:write</span></div>
+                </div>
+                <div class="item-act"><button class="m-btn secondary sm">Manage</button></div>
+              </div>
+              <div class="item">
+                <div class="item-ic logo" style="background:#03363D; color:#fff"><i class="ti ti-headset"></i></div>
+                <div class="item-body">
+                  <div class="item-name">Zendesk <span class="m-badge warn sm"><span class="dot"></span> Reauthorize</span></div>
+                  <div class="item-desc">Reads ticket threads and writes drafted replies back as private notes.</div>
+                  <div class="item-meta"><span class="item-tag auth-tag"><i class="ti ti-shield-lock"></i> OAuth 2.0</span><span class="item-tag">token expired</span></div>
+                </div>
+                <div class="item-act"><button class="m-btn accent sm">Fix</button></div>
+              </div>
+              <div class="add-row"><i class="ti ti-plug"></i> Browse 40+ connectors</div>
+            </div>
+          </div>
+
+          <!-- ⑥ MEMORY -->
+          <div class="m-card block" data-block data-section="memory">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-orange-bg); color:var(--cat-orange)"><i class="ti ti-brain"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Memory</div>
+                <div class="block-sub">What the agent carries between turns and across sessions</div>
+              </div>
+              <div class="head-act"><button class="m-btn ghost sm" data-view-memory><i class="ti ti-eye"></i> View memory</button><i class="ti ti-chevron-down chev"></i></div>
+            </div>
+            <div class="block-body">
+              <div class="mem-grid">
+                <div class="mem-card on">
+                  <div class="mem-top">
+                    <div class="mem-ic" style="background:var(--accent-bg); color:var(--accent)"><i class="ti ti-history-toggle"></i></div>
+                    <div style="flex:1">
+                      <div class="mem-name">Short-term</div>
+                      <div class="item-tag" style="margin-top:4px; display:inline-block">conversation window</div>
+                    </div>
+                    <div class="m-switch on" data-switch></div>
+                  </div>
+                  <div class="mem-desc">Keeps the last turns in context so multi-message tickets stay coherent.</div>
+                  <div class="mem-stat"><span>Window</span><b>20 turns</b></div>
+                </div>
+                <div class="mem-card on">
+                  <div class="mem-top">
+                    <div class="mem-ic" style="background:var(--cat-orange-bg); color:var(--cat-orange)"><i class="ti ti-database-cog"></i></div>
+                    <div style="flex:1">
+                      <div class="mem-name">Long-term</div>
+                      <div class="item-tag" style="margin-top:4px; display:inline-block">semantic store</div>
+                    </div>
+                    <div class="m-switch on" data-switch></div>
+                  </div>
+                  <div class="mem-desc">Remembers customer preferences &amp; prior resolutions across sessions.</div>
+                  <div class="mem-stat"><span>Namespace</span><b>per-customer</b></div>
+                </div>
+              </div>
+              <div class="m-alert info" style="margin-top:14px">
+                <div class="a-ic"><i class="ti ti-info-circle"></i></div>
+                <div class="a-body">
+                  <div class="a-title">Memory is scoped per customer</div>
+                  <div class="a-text">Long-term entries are isolated by customer ID and never shared between users. Retention: 90 days.</div>
+                </div>
+              </div>
+              <div class="curator" id="curator">
+                <div class="item-ic"><i class="ti ti-recycle"></i></div>
+                <div class="item-body">
+                  <div class="item-name">Memory curator <span class="m-badge good sm"><span class="dot"></span> Running</span></div>
+                  <div class="item-desc">A background agent that merges duplicates, prunes stale entries and promotes recurring facts to long-term. Last pass 38m ago · next in 3h 22m.</div>
+                </div>
+                <div class="item-act"><button class="m-btn secondary sm" data-curator-log>Log</button><div class="m-switch on" data-switch></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ⑦ KNOWLEDGE -->
+          <div class="m-card block" data-block data-section="knowledge">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-rose-bg); color:var(--cat-rose)"><i class="ti ti-books"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Knowledge <span class="cnt">2</span></div>
+                <div class="block-sub">Sources the agent retrieves from to stay grounded</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Add</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-blue-bg); color:var(--cat-blue)"><i class="ti ti-book-2"></i></div>
+                <div class="item-body">
+                  <div class="item-name">Help Center</div>
+                  <div class="item-desc">1,240 articles · re-indexed nightly</div>
+                </div>
+                <div class="item-act"><span class="m-badge good sm"><span class="dot"></span> Synced</span></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-amber-bg); color:var(--cat-amber)"><i class="ti ti-ticket"></i></div>
+                <div class="item-body">
+                  <div class="item-name">Resolved tickets</div>
+                  <div class="item-desc">18k threads · embeddings updated 4h ago</div>
+                </div>
+                <div class="item-act"><span class="m-badge good sm"><span class="dot"></span> Synced</span></div>
+              </div>
+              <div class="add-row"><i class="ti ti-upload"></i> Connect a data source</div>
+            </div>
+          </div>
+
+          <!-- ⑧ TRIGGERS -->
+          <div class="m-card block collapsed" data-block data-section="triggers">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--cat-amber-bg); color:var(--cat-amber)"><i class="ti ti-bolt"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Triggers <span class="cnt">2</span></div>
+                <div class="block-sub">How runs start — events, schedules, or webhooks</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Add</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-inbox"></i></div>
+                <div class="item-body">
+                  <div class="item-name">New Zendesk ticket</div>
+                  <div class="item-desc">Fires whenever a ticket lands in the "Tier 1" view.</div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+              <div class="item">
+                <div class="item-ic" style="background:var(--cat-plum-bg); color:var(--cat-plum)"><i class="ti ti-webhook"></i></div>
+                <div class="item-body">
+                  <div class="item-name"><span class="mono">POST /agents/triage/run</span></div>
+                  <div class="item-desc">Inbound webhook for custom integrations.</div>
+                </div>
+                <div class="item-act"><div class="m-switch on" data-switch></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ⑨ EVALUATION -->
+          <div class="m-card block collapsed" data-block data-section="evaluation">
+            <div class="block-head">
+              <div class="block-ic"><i class="ti ti-target-arrow"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Evaluation <span class="cnt">0</span></div>
+                <div class="block-sub">How you’ll know the agent is working before and after publish</div>
+              </div>
+              <div class="head-act">
+                <button class="m-btn ghost sm"><i class="ti ti-plus"></i> Add goal</button>
+                <i class="ti ti-chevron-down chev"></i>
+              </div>
+            </div>
+            <div class="block-body">
+              <div class="add-row"><i class="ti ti-target-arrow"></i> Set an evaluation goal</div>
+            </div>
+          </div>
+
+          <!-- ⑩ GUARDRAILS -->
+          <div class="m-card block collapsed" data-block data-section="guardrails">
+            <div class="block-head">
+              <div class="block-ic" style="background:var(--bad-bg); color:var(--bad)"><i class="ti ti-shield-check"></i></div>
+              <div class="block-titles">
+                <div class="block-title">Guardrails</div>
+                <div class="block-sub">Limits and safety checks applied to every run</div>
+              </div>
+              <div class="head-act"><i class="ti ti-chevron-down chev"></i></div>
+            </div>
+            <div class="block-body">
+              <div class="guard">
+                <div class="guard-ic"><i class="ti ti-currency-dollar"></i></div>
+                <div class="guard-body">
+                  <div class="guard-name">Spend approval over $50</div>
+                  <div class="guard-desc">Refunds or credits above the limit require a human approval step.</div>
+                </div>
+                <div class="m-switch on" data-switch></div>
+              </div>
+              <div class="guard">
+                <div class="guard-ic"><i class="ti ti-eye-off"></i></div>
+                <div class="guard-body">
+                  <div class="guard-name">PII redaction</div>
+                  <div class="guard-desc">Strips card numbers &amp; secrets from logs and traces.</div>
+                </div>
+                <div class="m-switch on" data-switch></div>
+              </div>
+              <div class="guard">
+                <div class="guard-ic"><i class="ti ti-message-report"></i></div>
+                <div class="guard-body">
+                  <div class="guard-name">Toxicity &amp; off-topic filter</div>
+                  <div class="guard-desc">Blocks unsafe output and refuses out-of-scope requests.</div>
+                </div>
+                <div class="m-switch on" data-switch></div>
+              </div>
+              <div class="guard">
+                <div class="guard-ic"><i class="ti ti-clock-stop"></i></div>
+                <div class="guard-body">
+                  <div class="guard-name">Run budget</div>
+                  <div class="guard-desc">Hard cap of $0.40 and 30s per run before it halts.</div>
+                </div>
+                <div class="m-switch on" data-switch></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ──────── TEST PANEL ──────── -->
+      <div class="test" data-mode="test">
+        <div class="test-head">
+          <div class="m-seg panel-modes">
+            <button data-pmode="build"><i class="ti ti-sparkles"></i> Build</button>
+            <button class="on" data-pmode="test"><i class="ti ti-player-play"></i> Test</button>
+            <button data-pmode="observe"><i class="ti ti-activity"></i> Observe <span class="pm-dot"></span></button>
+          </div>
+          <div class="sp"></div>
+          <span class="ts" data-pane-meta="test">claude-sonnet-4.5 · draft</span>
+          <span class="ts" data-pane-meta="build" hidden>v4 · 3 pending</span>
+          <span class="ts" data-pane-meta="observe" hidden>live</span>
+          <button class="m-btn ghost sm icon" title="Reset" data-pane-reset><i class="ti ti-refresh"></i></button>
+        </div>
+
+        <!-- BUILD: co-pilot that edits the agent -->
+        <div class="pane" data-pane="build" hidden>
+          <div class="thread">
+            <div class="pane-intro">
+              <div class="pi-ic"><i class="ti ti-sparkles"></i></div>
+              <div class="pi-t">Build with a co-pilot</div>
+              <div class="pi-s">Describe a change and it will be applied to this agent as a reviewable proposal — instructions, tools, skills or guardrails.</div>
+            </div>
+            <div class="msg agent">
+              <div class="who">Co-pilot</div>
+              <div class="bub">I re-scanned the last 340 runs. The suggestions below are waiting for review — the biggest is a 9% groundedness gain from a KB fallback rule. Apply them here, or tell me what else to change.</div>
+            </div>
+            <div class="proposals" data-proposals></div>
+          </div>
+          <div class="test-foot">
+            <div class="test-presets">
+              <span class="preset" data-build="improve">Apply all suggestions</span>
+              <span class="preset" data-build="tone">Make replies more concise</span>
+              <span class="preset" data-build="guard">Add a refund guardrail</span>
+            </div>
+            <div class="composer">
+              <textarea rows="1" placeholder="Tell the co-pilot what to change…" data-build-input></textarea>
+              <button class="composer-send" data-build-send title="Send"><i class="ti ti-arrow-up"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TEST: playground -->
+        <div class="pane" data-pane="test">
+          <div class="thread" id="thread">
+          <div class="msg user">
+            <div class="who">You</div>
+            <div class="bub">My invoice charged me twice this month and I'm pretty annoyed. Can you fix it?</div>
+          </div>
+
+          <div class="msg agent">
+            <div class="who">Support Triage</div>
+            <div class="trace">
+              <div class="trace-step">
+                <div class="trace-ic" style="background:var(--cat-teal-bg); color:var(--cat-teal)"><i class="ti ti-tag"></i></div>
+                <div class="trace-main">
+                  <div class="trace-name">classify()</div>
+                  <div class="trace-detail">intent: billing · priority: high · sentiment: negative</div>
+                </div>
+                <i class="ti ti-circle-check-filled trace-check"></i>
+              </div>
+              <div class="trace-step">
+                <div class="trace-ic" style="background:var(--cat-blue-bg); color:var(--cat-blue)"><i class="ti ti-search"></i></div>
+                <div class="trace-main">
+                  <div class="trace-name">search_kb("duplicate charge refund")</div>
+                  <div class="trace-detail">3 articles · top: "Resolving duplicate charges"</div>
+                </div>
+                <span class="trace-time">240ms</span>
+              </div>
+              <div class="trace-step">
+                <div class="trace-ic" style="background:var(--cat-rose-bg); color:var(--cat-rose)"><i class="ti ti-arrow-up-right-circle"></i></div>
+                <div class="trace-main">
+                  <div class="trace-name">escalate(reason: "refund &gt; $50")</div>
+                  <div class="trace-detail">flagged for human approval · routed to billing</div>
+                </div>
+                <i class="ti ti-circle-check-filled trace-check"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="msg agent">
+            <div class="who">Support Triage</div>
+            <div class="bub">I'm sorry about the double charge — I can see two identical invoices dated the 3rd. I've flagged this for an immediate refund and looped in our billing team, since the amount is above what I can refund on my own. You'll get a confirmation by email within one business day. Anything else I can line up while that's processing?</div>
+          </div>
+        </div>
+          <div class="thread trace-pane" id="tracePane" hidden></div>
+          <div class="improve-pane" id="improvePane" hidden></div>
+          <div class="test-foot">
+          <div class="test-presets">
+            <span class="preset" data-preset="Where's my order #4471?">Where's my order?</span>
+            <span class="preset" data-preset="How do I export my data to CSV?">Export to CSV?</span>
+            <span class="preset" data-preset="This app is broken and I want a refund now.">Angry refund</span>
+          </div>
+          <div class="composer">
+            <textarea id="composerInput" rows="1" placeholder="Message Support Triage…"></textarea>
+            <button class="composer-send" id="sendBtn"><i class="ti ti-arrow-up"></i></button>
+          </div>
+        </div></div>
+
+        <!-- OBSERVE: traces + runtime log -->
+        <div class="pane" data-pane="observe" hidden>
+          <div class="obs-bar">
+            <div class="m-seg sm"><button class="on" data-obs="traces">Traces</button><button data-obs="logs">Logs</button></div>
+            <div class="sp"></div>
+            <select class="m-select xs" data-obs-env><option>Playground</option><option>Production</option></select>
+          </div>
+          <div class="thread obs-list" data-obs-pane="traces"></div>
+          <div class="thread obs-list" data-obs-pane="logs" hidden></div>
+        </div>
+      </div>
+
+    </div>
+    </div><!-- /view-agents -->
+
+    <!-- ═══════════ LIBRARY VIEWS (rendered by screens.js) ═══════════ -->
+    <div class="view library" id="view-home"></div>
+    <div class="view library" id="view-models"></div>
+    <div class="view library" id="view-evals"></div>
+    <div class="view library" id="view-skills"></div>
+    <div class="view library" id="view-tools"></div>
+    <div class="view library" id="view-connectors"></div>
+    <div class="view library" id="view-knowledge"></div>
+    <div class="view library" id="view-analytics"></div>
+  </div>
+
+  <!-- Full-screen create wizard -->
+  <div class="wz-overlay" id="wizard"></div>
+
+  <!-- Overlay + toast hosts for flows -->
+  <div class="m-overlay" id="overlay"></div>
+  <div class="m-toast-host" id="toastHost"></div>
+
+  <script src="builder.js"></script>
+  <script src="flows.js"></script>
+  <script src="screens.js"></script>
+  <script src="features.js"></script>
+  <script src="features-views.js"></script>
+  <script src="features-agent.js"></script>
+  <script src="skills.js"></script>
+  <script src="panel.js"></script>
+  <script>
+    (function(){function go(){var m=location.hash.match(/view=([a-z]+)/);if(m){var b=document.querySelector('[data-view="'+m[1]+'"]');if(b)b.click();}}window.addEventListener('hashchange',go);window.addEventListener('load',function(){setTimeout(go,50)});})();
+  </script>
+</body>
+</html>
