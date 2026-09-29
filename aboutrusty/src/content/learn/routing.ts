@@ -8,7 +8,7 @@ export const routing: Lesson = {
   source: "rusty-core/src/graph.rs",
   before: ["2.2", "2.3"],
   summary:
-    "After the barrier merges a step's writes, the executor decides which nodes run next. It has three sources for that decision: static edges, a conditional router, and a Command returned by a node. A router can also fan out, running one node once per item with its own input. This lesson covers each source, how they combine, and which mistakes compile() rejects before anything runs.",
+    "After the barrier merges a step's writes, the executor decides which nodes run next. It has three sources for that decision: static edges, a conditional router, and a Command returned by a node. A router can also fan out, running one node once per item with its own input.",
   glance: {
     learn: "How the next active set is built, and when a goto overrides edges",
     try: "Switching routing kinds, then running a Send map-reduce",
@@ -17,24 +17,14 @@ export const routing: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
-      blocks: [
-        {
-          type: "p",
-          text: "An agent's next move depends on data: whether the model asked for a tool, how many sub-questions a planner produced, whether a check passed. So routing has to run code. But code-driven routing is also where graphs go wrong: a typo in a node name, two rules that disagree about where to go, a branch that silently runs twice.",
-        },
-        {
-          type: "p",
-          text: "Rusty splits the problem. The shape of the graph is checked once, when you call `GraphBuilder::compile()`. The data-dependent part runs at every step boundary, against the merged state, and its result is recorded in the journal.",
-        },
-      ],
-    },
-    {
       id: "sources",
       title: "Three ways to say what runs next",
       toc: "Three sources",
       blocks: [
+        {
+          type: "p",
+          text: "An agent's next move depends on data: whether the model asked for a tool, how many sub-questions a planner produced, whether a check passed. Rusty checks the shape of the [[Graph|graph]] once, when you call `GraphBuilder::compile()`, and runs the data-dependent part at every step boundary against the merged state. The result is recorded in the journal as a `routing_decision` event.",
+        },
         {
           type: "rows",
           rows: [
@@ -121,7 +111,7 @@ export const routing: Lesson = {
         },
         {
           type: "p",
-          text: "The router gets a clone of the post-barrier state, so it sees every write from the step, not a partial view. It is called once per source node per step, even if that node ran several times through a fan-out.",
+          text: "The router gets a clone of the post-barrier state, so it sees every write from the step. It is called once per source node per step, even if that node ran several times through a fan-out.",
         },
         {
           type: "p",
@@ -137,6 +127,14 @@ export const routing: Lesson = {
         {
           type: "p",
           text: "A node can decide the next step itself by attaching a command to its output: `NodeOutput::route(Command::goto(\"answer\"))`, or `.with_command(...)` on an output that also carries updates. `Command::goto_many` activates several nodes in parallel.",
+        },
+        {
+          type: "predict",
+          question: "Node `plan` has a static edge to `tools`. In the same step it returns `Command::goto(\"answer\")`. What runs next?",
+          options: ["`tools` and `answer`, in parallel", "Only `answer`", "Only `tools`", "Nothing: compile() rejects the graph"],
+          answer: 1,
+          explain:
+            "A goto anywhere in the step replaces edge evaluation for every node that ran. compile() can't see a goto, because it is returned at run time, so the graph compiles.",
         },
         {
           type: "p",
@@ -168,19 +166,19 @@ if !commands.is_empty() {
         },
         {
           type: "note",
-          title: "Read the executor, not the builder comment",
+          title: "The builder's doc comment is out of date",
           text: "The doc comment on `GraphBuilder::add_edge` says that when a node with static edges also returns a goto, both paths execute. The executor code above does not do that: a goto anywhere in the step replaces all edge evaluation. This lesson follows the executor, and so does `docs/architecture.md`.",
         },
       ],
     },
     {
       id: "send",
-      title: "Send: fan-out with scoped input",
+      title: "Send fan-out",
       toc: "Send fan-out",
       blocks: [
         {
           type: "p",
-          text: "`Route::Send` is the map step of map-reduce. The router returns one `Send` per item, and each becomes its own invocation in the next step, even when they all target the same node. Unlike edges and goto targets, Sends are not deduplicated.",
+          text: "`Route::Send` is the map step of map-reduce. The router returns one `Send` per item, and each becomes its own invocation in the next step, even when they all target the same node. Edges and goto targets are deduplicated; Sends are kept one per item.",
         },
         {
           type: "p",
@@ -209,13 +207,43 @@ if let Some(scoped) = &task.scoped {
 }`,
         },
         {
+          type: "predict",
+          question: "Four Sends target `process_item`, each with `{\"item\": topic}`. After the step, what does the shared `item` channel hold?",
+          options: ["The last topic to finish", "An array of all four topics", "Whatever it held before the step"],
+          answer: 2,
+          explain:
+            "The scoped object is laid over each invocation's private snapshot and goes no further. Only the updates a node returns are merged at the barrier.",
+        },
+        {
           type: "p",
           text: "So each invocation reads its own `item`, and the scoped values never reach the shared state. What does reach it is each invocation's output, and several invocations writing one channel in one step need a multi-write reducer on that channel. Step through the fan-out example below, then declare `results` as `Overwrite` to see what happens without one:",
         },
         { type: "diagram", name: "send-fanout" },
         {
-          type: "p",
-          text: "Run the real thing with `cargo run --example parallel_fanout` from `rusty-core/`. It fans out over four topics and prints one line per invocation, all at step 1.",
+          type: "lab",
+          title: "A Send fan-out, and a typo",
+          intro:
+            "The router in `parallel_fanout.rs` returns one `Send` per topic. Watch the router line, then four invocations of the same node, all at step 1.",
+          commands: `cd rusty-core
+cargo run --example parallel_fanout`,
+          output: `=== parallel_fanout: dynamic map-reduce via Route::Send ===
+
+[generate_topics] emitting 4 topics
+[router] fanning out 4 Sends to \`process_item\`
+[process_item] (step 1) processed "super-step scheduling" -> checksum 2142
+[process_item] (step 1) processed "channel reducers" -> checksum 1622
+[process_item] (step 1) processed "checkpoint persistence" -> checksum 2285
+[process_item] (step 1) processed "interrupt/resume" -> checksum 1709
+[summarize] fan-in complete: 4 results merged, total checksum 7758
+…`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change:
+              "In the router, misspell the target: `Send::new(\"process_items\", json!({ \"item\": t }))`. Run again.",
+            predict: "Does `builder.compile()?` catch the typo, or does the run start?",
+            result:
+              "It compiles and the run starts. `generate_topics` runs and the router prints its line, then the run fails with `Error: Graph(...)`: Route::Send from `generate_topics` targets unknown node `process_items`. Send targets are data, so they are checked while routing.",
+          },
         },
       ],
     },
@@ -262,35 +290,20 @@ if let Some(scoped) = &task.scoped {
       ],
     },
     {
-      id: "trade-offs",
-      title: "Trade-offs",
+      id: "limits",
+      title: "Things to watch",
+      toc: "Watch for",
       blocks: [
         {
-          type: "rows",
-          rows: [
-            {
-              label: "Late errors for dynamic targets.",
-              text: "A misspelled router target compiles and fails only when that branch is taken. Test routers directly, or cover each branch in a test run.",
-            },
-            {
-              label: "goto is all or nothing per step.",
-              text: "One goto in a step turns off edge evaluation for every node in it, including siblings that expected their edges to fire.",
-            },
-            {
-              label: "Fan-out order.",
-              text: "Invocations of one node share its name, so their writes to an Append channel land in the order they reached the barrier. Include a key in each item if order matters.",
-            },
+          type: "list",
+          items: [
+            "A misspelled router or Send target compiles and fails only when that branch is taken, as in the lab. Test routers directly, or cover each branch in a test run.",
+            "One goto in a step turns off edge evaluation for every node in it, including siblings that expected their edges to fire.",
+            "Invocations of one node share its name, so their writes to an Append channel land in the order they reached the barrier. Include a key in each item if order matters.",
           ],
         },
       ],
     },
-  ],
-  takeaways: [
-    "The next step comes from static edges, one router per node, or a Command returned by a node.",
-    "A goto from any node in the step replaces all edge evaluation for that step.",
-    "Route::Send runs one invocation per item, each with its object laid over a private snapshot.",
-    "Fan-in through Send or parallel edges needs a multi-write reducer on the shared channel.",
-    "compile() rejects ambiguous structure; router, Send, and goto targets are checked at run time.",
   ],
   quiz: [
     {
@@ -298,16 +311,8 @@ if let Some(scoped) = &task.scoped {
       a: "Once. The executor tracks planned targets and schedules each edge target a single time.",
     },
     {
-      q: "A node has an edge to `tools` and also returns `Command::goto(\"answer\")`. What runs next?",
-      a: "Only `answer`. A goto in the step replaces edge evaluation entirely.",
-    },
-    {
       q: "Can you give node `plan` both `add_edge(\"plan\", \"search\")` and a conditional edge?",
       a: "No. compile() rejects a source node with both static and conditional edges. Put the choice inside the router.",
-    },
-    {
-      q: "Three Sends target `process_item` with `{\"item\": ...}`. Does `item` end up in the shared state?",
-      a: "No. The scoped object is laid over each invocation's private snapshot only. Only the nodes' returned updates are merged.",
     },
   ],
   sources: [
@@ -316,8 +321,8 @@ if let Some(scoped) = &task.scoped {
     { path: "rusty-core/src/node.rs", what: "Command::goto, Command::goto_many, NodeOutput::route" },
     { path: "rusty-core/examples/parallel_fanout.rs", what: "Map-reduce with Route::Send and Reducer::Append" },
   ],
+  deeper: [{ book: "02-mental-model.html#five-concepts", label: "The Rusty mental model: five concepts" }],
   related: [
-    { label: "Example: parallel_fanout.rs", href: "https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/examples/parallel_fanout.rs" },
     { label: "2.2 State channels and reducers", href: "/learn/state-channels" },
     { label: "Architecture: routing", href: "https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/architecture.md" },
   ],

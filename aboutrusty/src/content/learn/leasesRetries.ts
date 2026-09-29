@@ -8,7 +8,7 @@ export const leasesRetries: Lesson = {
   source: "rusty-core/src/durable.rs",
   before: ["4.1"],
   summary:
-    "A durable task outlives the worker that runs it. The server hands the task out under a lease, the worker keeps the lease alive with heartbeats, and a dead worker's task comes back when the lease runs out. When an attempt fails, one shared function decides whether to retry, dead-letter, or fail. This lesson covers the lease protocol and that decision.",
+    "A durable task outlives the worker that runs it. The server hands the task out under a lease, the worker keeps the lease alive with heartbeats, and a dead worker's task comes back when the lease runs out. When an attempt fails, one shared function decides whether to retry, dead-letter, or fail.",
   glance: {
     learn: "How a lease reassigns work, and the four gates of classify_retry",
     try: "Killing a worker and failing attempts with each ErrorClass",
@@ -17,16 +17,17 @@ export const leasesRetries: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
+      id: "outcomes",
+      title: "Three ways an attempt ends",
+      toc: "Outcomes",
       blocks: [
         {
           type: "p",
-          text: "A worker takes a task and starts calling a payment API. Three things can happen next. It finishes and reports. It hits an error and reports that. Or it dies, and reports nothing at all. The queue has to handle all three without a person watching, and it can't tell a slow worker from a dead one by asking.",
+          text: "A worker takes a [[Durable task|durable task]] and starts calling a payment API. Three things can happen next. It finishes and reports. It hits an error and reports that. Or it dies, and reports nothing at all. The queue has to handle all three without a person watching, and it can't tell a slow worker from a dead one by asking.",
         },
         {
           type: "p",
-          text: "The failed-with-a-report case has its own trap. Some errors go away on retry and some never will. Some work is safe to repeat and some isn't: a timed-out charge may already have gone through. Retrying everything, or nothing, is wrong.",
+          text: "The failed-with-a-report case has its own trap. Some errors go away on retry and some never will. Some work is safe to repeat and some isn't: a timed-out charge may already have gone through. So the queue needs a rule for each case.",
         },
       ],
     },
@@ -61,12 +62,12 @@ export const leasesRetries: Lesson = {
     },
     {
       id: "leases",
-      title: "Leases: delivery without deletion",
+      title: "Leases",
       toc: "Leases",
       blocks: [
         {
           type: "p",
-          text: "A worker calls `POST /tasks/claim` with a `lease_ms`. The server marks the task `leased`, records the worker as the lease owner with an expiry time, and increments the attempt counter. The task is invisible to other workers until the lease runs out. This is the SQS visibility-timeout idea with an explicit owner.",
+          text: "A worker calls `POST /tasks/claim` with a `lease_ms` and gets the task under a [[Lease|lease]]. The server marks the task `leased`, records the worker as the lease owner with an expiry time, and increments the attempt counter. The task is invisible to other workers until the lease runs out. This is the SQS visibility-timeout idea with an explicit owner.",
         },
         {
           type: "p",
@@ -105,6 +106,51 @@ export const leasesRetries: Lesson = {
           text: "Heartbeat, complete, and fail are all lease-guarded. The server checks that the caller still owns the lease, atomically with the change. A worker whose lease expired and was reclaimed gets `409` from all three. In the worker, a `409` on a heartbeat aborts the handler and skips the settle call, so the new holder is the only one who can finish the task.",
         },
         {
+          type: "predict",
+          question: "Worker A claims a task with a 100 ms lease and dies. Worker B claims the same task 200 ms later. What `attempt` number does B see?",
+          options: ["1: A never reported a failure", "2", "It can't claim it until A's task is failed by a reaper"],
+          answer: 1,
+          explain:
+            "Every claim increments the attempt counter, and an expired lease makes the task claimable with no reaper involved. The lab below shows it on a real server.",
+        },
+        {
+          type: "lab",
+          title: "Lose a lease",
+          intro:
+            "Start the demo server in open mode in one terminal, then drive the queue with curl from another. Worker A takes a 100 ms lease and never heartbeats. Worker B takes over, A tries to finish anyway, and B reports a timeout.",
+          commands: `# terminal 1
+RUSTY_OPEN=1 cargo run -p rusty-agent-server --example server_demo
+
+# terminal 2
+TASK=$(curl -s -X POST localhost:8100/tasks -H 'content-type: application/json' \\
+  -d '{"kind": "send_email", "payload": {"to": "a@b.c"}, "effect": "idempotent"}' | jq -r .task_id)
+
+curl -s -X POST localhost:8100/tasks/claim -H 'content-type: application/json' \\
+  -d '{"worker_id": "worker-a", "lease_ms": 100}' | jq -c '.task | {attempt, status, owner: .lease.owner}'
+sleep 0.2
+
+curl -s -X POST localhost:8100/tasks/claim -H 'content-type: application/json' \\
+  -d '{"worker_id": "worker-b", "lease_ms": 30000}' | jq -c '.task | {attempt, status, owner: .lease.owner}'
+
+curl -s -o /dev/null -w '%{http_code}\\n' -X POST localhost:8100/tasks/$TASK/complete \\
+  -H 'content-type: application/json' -d '{"worker_id": "worker-a", "result": null}'
+
+curl -s -X POST localhost:8100/tasks/$TASK/fail -H 'content-type: application/json' \\
+  -d '{"worker_id": "worker-b", "error_class": "timeout", "message": "provider slow", "retryable": true}' \\
+  | jq -c '{requeued, dead, next_attempt_at}'`,
+          output: `{"attempt":1,"status":"leased","owner":"worker-a"}
+{"attempt":2,"status":"leased","owner":"worker-b"}
+409
+{"requeued":true,"dead":false,"next_attempt_at":"2026-09-29T19:15:54.663215Z"}`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change: "Enqueue the task with `\"effect\": \"non_idempotent\"` and run the same five calls.",
+            predict: "The timeout is a retryable class and this is attempt 2 of 3. Does the task get another try?",
+            result:
+              "No. The first four lines are identical, and the last one is `{\"requeued\":false,\"dead\":false,\"next_attempt_at\":null}`: failed outright, outside the dead-letter queue. The effect gate below refuses before the class or the attempt count is considered.",
+          },
+        },
+        {
           type: "note",
           title: "What the lease does not do",
           text: "A lease makes reassignment safe. It doesn't stop the effect from running twice: the dead worker may have charged the card before it died. The idempotency key covers that. [4.4](/learn/crash-recovery) walks through a test that kills a worker in exactly that window.",
@@ -124,7 +170,7 @@ export const leasesRetries: Lesson = {
     },
     {
       id: "classes",
-      title: "Why the attempt failed: ErrorClass",
+      title: "Error classes",
       toc: "ErrorClass",
       blocks: [
         {
@@ -141,7 +187,7 @@ export const leasesRetries: Lesson = {
             { label: "resource_exhausted", tone: "amber", text: "Out of memory, connections, or quota. Retry with backoff." },
             { label: "unknown", tone: "amber", text: "Unclassified. Retry to the attempt limit, then dead-letter. These are the DLQ's main input, because they need a person to look." },
             { label: "invalid_input", tone: "red", text: "The same bytes will fail the same way. Never retried; fails the task." },
-            { label: "cancelled", tone: "plain", text: "Control flow, not failure. Never retried and never dead-lettered." },
+            { label: "cancelled", tone: "plain", text: "Control flow. Never retried and never dead-lettered." },
           ],
         },
         {
@@ -152,9 +198,17 @@ export const leasesRetries: Lesson = {
     },
     {
       id: "gates",
-      title: "One decision, four gates",
+      title: "The retry decision",
       toc: "classify_retry",
       blocks: [
+        {
+          type: "predict",
+          question: "An `idempotent` task fails with `unknown` on attempt 3, and `max_attempts` is 3. Retry, dead-letter, or fail?",
+          options: ["Retry: `unknown` is retryable", "Dead-letter", "Fail outright"],
+          answer: 1,
+          explain:
+            "The effect and the class both allow a retry, but the attempt gate comes before the retry: at `max_attempts`, a retryable failure goes to the dead-letter queue.",
+        },
         {
           type: "p",
           text: "Every failed attempt goes through one function in `rusty-core`. The worker only reports the class and a `retryable` flag to `POST /tasks/{id}/fail`; the server decides, against the task record:",
@@ -182,7 +236,7 @@ RetryDecision::Retry {
           type: "list",
           ordered: true,
           items: [
-            "**Effect gate.** Only `Pure`, `ReadOnly`, and `Idempotent` work is freely repeatable. A `Compensatable` or `NonIdempotent` task is never retried silently, whatever the class.",
+            "**Effect gate.** Only `Pure`, `ReadOnly`, and `Idempotent` work is freely repeatable (see [[Effect|effect classes]]). A `Compensatable` or `NonIdempotent` task is never retried silently, whatever the class.",
             "**Class gate.** `invalid_input` and `cancelled` fail immediately.",
             "**Attempt gate.** `attempt` counts attempts made so far, starting at 1. At `max_attempts` a retryable failure goes to the dead-letter queue.",
             "**Retry**, after a jittered delay.",
@@ -190,7 +244,7 @@ RetryDecision::Retry {
         },
         {
           type: "p",
-          text: "The order is the policy. The effect gate comes first because the question it answers, whether a second run could do harm, outranks every other one. The effect comes from the task's declared `effect` at enqueue. When the enqueuer didn't declare one, the server uses the worker's `retryable` flag: `true` reads as `Idempotent`, `false` as `NonIdempotent`. A declared non-repeatable effect outranks the flag.",
+          text: "The order is the policy. The effect gate comes first because its question, whether a second run could do harm, outranks every other one. The effect comes from the task's declared `effect` at enqueue. When the enqueuer didn't declare one, the server uses the worker's `retryable` flag: `true` reads as `Idempotent`, `false` as `NonIdempotent`. A declared non-repeatable effect outranks the flag.",
         },
         {
           type: "p",
@@ -219,11 +273,11 @@ RetryDecision::Retry {
         },
         {
           type: "p",
-          text: "Full jitter means the whole window is random, not a fixed delay plus a little noise. When a shared dependency goes down, hundreds of tasks fail together. Fixed delays would bring them all back at the same instant and knock the dependency over again. Uniform draws over the window spread them out.",
+          text: "Full jitter means the whole window is random, where a fixed delay would only add a little noise. When a shared dependency goes down, hundreds of tasks fail together. Fixed delays would bring them all back at the same instant and knock the dependency over again. Uniform draws over the window spread them out.",
         },
         {
           type: "p",
-          text: "`uniform` is a parameter, not a draw inside the function. The server's queue takes it from the OS random source. A caller that passes a sample from a seeded source gets the same schedule on every replay. A learned policy may tune the base, the cap, and the attempt budget (narrowing it, never widening it), but not the shape of the schedule.",
+          text: "`uniform` is a parameter; the function draws nothing itself. The server's queue takes it from the OS random source. A caller that passes a sample from a seeded source gets the same schedule on every replay. A learned policy may tune the base, the cap, and the attempt budget (narrowing it, never widening it), but not the shape of the schedule.",
         },
       ],
     },
@@ -287,46 +341,8 @@ assert_eq!(task["attempt"], json!(2));`,
         },
       ],
     },
-    {
-      id: "trade-offs",
-      title: "Trade-offs",
-      blocks: [
-        {
-          type: "rows",
-          rows: [
-            {
-              label: "Recovery waits for the lease.",
-              text: "A dead worker's task is stuck until its lease expires. Shorter leases recover faster and cost more heartbeat traffic.",
-            },
-            {
-              label: "Undeclared means unsafe.",
-              text: "A task with no declared effect whose worker reports `retryable: false` fails on the first error. Declare `idempotent` and pass the key to the effect to get retries.",
-            },
-            {
-              label: "Delivery is at-least-once.",
-              text: "Leases and retries guarantee the work runs. They don't guarantee it runs once. Idempotent effects make the repeats harmless.",
-            },
-          ],
-        },
-      ],
-    },
-  ],
-  takeaways: [
-    "A lease makes a task invisible until it expires; heartbeats every lease / 3 keep it alive.",
-    "An expired lease makes the task claimable again as a new attempt. The old holder gets 409.",
-    "classify_retry checks the effect, then the class, then the attempt count, then retries.",
-    "Backoff is full jitter over 1 s × 2^(n−1), capped at 5 minutes.",
-    "Dead-lettered work is retryable work that ran out of attempts. Outright failures never enter the DLQ.",
   ],
   quiz: [
-    {
-      q: "A task declared `non_idempotent` times out on attempt 1 of 3. What does the queue do?",
-      a: "Fails it outright: status failed, next_attempt_at null. The effect gate runs before the class and attempt gates.",
-    },
-    {
-      q: "An `idempotent` task fails with `unknown` on attempt 3, with max_attempts 3. Retry, dead, or fail?",
-      a: "Dead. The class is retryable, but attempt 3 ≥ max_attempts, so it goes to the dead-letter queue.",
-    },
     {
       q: "Worker A's lease expires, worker B claims the task, and then A calls complete. What happens?",
       a: "A gets 409. The lease check runs atomically with the mutation, and B is now the owner.",
@@ -343,8 +359,6 @@ assert_eq!(task["attempt"], json!(2));`,
     { path: "rusty-server/tests/tasks.rs", what: "Lease expiry, retry, DLQ, and outright-failure tests" },
     { path: "docs/durable-work-design.md", what: "The retry taxonomy and lease model" },
   ],
-  related: [
-    { label: "Lesson 4.4: the crash_recovery test", href: "/learn/crash-recovery" },
-    { label: "Book: Durability", href: "/guide/10-durability.html#level-two-durable-work" },
-  ],
+  deeper: [{ book: "10-durability.html#level-two-durable-work", label: "Durability: durable work" }],
+  related: [{ label: "4.4 Walkthrough: the crash_recovery test", href: "/learn/crash-recovery" }],
 };

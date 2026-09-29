@@ -8,7 +8,7 @@ export const interrupts: Lesson = {
   source: "rusty-core/src/node.rs",
   before: ["2.3", "3.1"],
   summary:
-    "An interrupt pauses a run so a person can decide something, then continues it with their answer. The pause can last seconds or weeks and can outlive the process. This lesson shows how a node asks, what the executor saves, and what happens on resume.",
+    "An interrupt pauses a run so a person can decide something, then continues it with their answer. The pause can last seconds or weeks and can outlive the process, because nothing is running while the person thinks: the run is stopped at a saved checkpoint.",
   glance: {
     learn: "How a run parks and resumes around a checkpoint",
     try: "Stepping through park and resume, call by call",
@@ -17,27 +17,13 @@ export const interrupts: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
-      blocks: [
-        {
-          type: "p",
-          text: "Some steps need a person: approving a payment, publishing a draft, confirming a destructive command. Waiting for them inside a running task doesn't work. The task holds memory for hours, and a restart loses the question and the work around it.",
-        },
-        {
-          type: "p",
-          text: "Rusty treats the wait as a stopped run with a saved checkpoint. Nothing runs while the person thinks. Their answer starts the run again from that checkpoint.",
-        },
-      ],
-    },
-    {
       id: "asking",
       title: "How a node asks",
       toc: "Asking",
       blocks: [
         {
           type: "p",
-          text: "A node pauses the run by returning the error built by `ctx.interrupt(payload)`. The payload is any JSON you want the person to see. On resume, the same node runs again and `ctx.resume_value()` returns their answer. So the node checks for an answer first and only asks when there isn't one:",
+          text: "Some steps need a person: approving a payment, publishing a draft, confirming a destructive command. A node pauses the run for that by returning the error built by `ctx.interrupt(payload)`, an [[Interrupt|interrupt]]. The payload is any JSON you want the person to see. On resume, the same node runs again and `ctx.resume_value()` returns their answer. So the node checks for an answer first and only asks when there isn't one:",
         },
         {
           type: "code",
@@ -45,7 +31,10 @@ export const interrupts: Lesson = {
           symbol: "approve node",
           code: `builder.add_node("approve", |ctx: NodeContext| async move {
     match ctx.resume_value() {
-        Some(decision) => Ok(NodeOutput::update("approval", decision.clone())),
+        Some(decision) => {
+            println!("[approve] resumed with human decision: {decision}");
+            Ok(NodeOutput::update("approval", decision.clone()))
+        }
         None => {
             let draft = ctx.state().get("draft").cloned().unwrap_or(Value::Null);
             Err(ctx.interrupt(json!({
@@ -59,7 +48,50 @@ export const interrupts: Lesson = {
         },
         {
           type: "p",
-          text: "The graph in that example is `draft → approve → publish`, with a `JsonFileCheckpointer`. Run it with `cd rusty-core && cargo run --example human_in_loop`.",
+          text: "The graph in that example is `draft → approve → publish`, with a `JsonFileCheckpointer`. The program calls `Executor::run` twice on the same thread: once without an answer, once with one.",
+        },
+        {
+          type: "predict",
+          question: "In the second call, which nodes print a line before `publish`?",
+          options: ["`draft` and `approve`", "Only `approve`", "None: the run continues after the interrupt call"],
+          answer: 1,
+          explain:
+            "The run resumes from the checkpoint saved at the suspension, whose next node is `approve`. `draft` already ran in an earlier step and is not repeated. `approve` runs again from its first line, so the `match` sees `Some(decision)` this time.",
+        },
+        {
+          type: "lab",
+          title: "Suspend, then resume",
+          intro: "Run the approval example and follow the two phases, then check your prediction against the first line of phase 2.",
+          commands: `cd rusty-core
+cargo run --example human_in_loop`,
+          output: `=== human_in_loop: interrupt/resume with JsonFileCheckpointer ===
+
+checkpoint dir: …/rusty-core/target/examples-checkpoints/human-in-loop
+
+--- PHASE 1: initial run (expect interrupt) ---
+[draft] wrote draft: "Rusty makes cyclic, resumable agent graphs safe in Rust."
+[approve] no decision available — interrupting for human review
+[phase 1] run suspended at \`approve\`
+[phase 1] review payload surfaced to the human: {"draft":"Rusty makes cyclic, resumable agent graphs safe in Rust.","kind":"approval_request","prompt":"Approve this draft for publication?"}
+[phase 1] durable checkpoint id: c89a1a75-95d6-4f9c-96cb-93ab157d3ab4
+
+--- PHASE 2: resume with human approval ---
+[approve] resumed with human decision: {"approved":true,"comment":"ship it","reviewer":"alice"}
+[publish] "published"
+[phase 2] run completed after resume
+published channel: {
+  "approved": true,
+  "draft": "Rusty makes cyclic, resumable agent graphs safe in Rust.",
+  "status": "published"
+}`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change:
+              "In phase 2, resume under a different thread: `RunConfig::new(\"another-thread\").with_resume(human_decision.clone())`.",
+            predict: "Does phase 2 start a fresh run from `draft`, or something else?",
+            result:
+              "Neither. Phase 1 behaves as before, then phase 2 fails at once with `Error: Checkpoint(...)`: cannot resume thread `another-thread`: no checkpoint found. A resume value means \"continue this thread\", and the thread id is the handle to the saved run.",
+          },
         },
       ],
     },
@@ -82,8 +114,15 @@ export const interrupts: Lesson = {
       toc: "Whole step",
       blocks: [
         {
+          type: "predict",
+          question: "Nodes A and B run in the same step. A finishes and returns its writes, then B interrupts. On resume, which nodes run?",
+          options: ["Only B", "A and B", "Neither: the run continues at the next step"],
+          answer: 1,
+          explain: "An interrupt discards the step like a failure does, including A's writes, so the suspension checkpoint schedules the whole active set.",
+        },
+        {
           type: "p",
-          text: "An interrupt is handled like a failure at the barrier: the step is discarded. That includes writes from sibling nodes that finished before the interrupt arrived. Siblings still running are aborted when the JoinSet is dropped. So the suspension checkpoint schedules every node of the step, not only the one that asked:",
+          text: "At the barrier, an interrupt is handled like a failure: the step is discarded. That includes writes from sibling nodes that finished before the interrupt arrived. Siblings still running are aborted when the JoinSet is dropped. So the suspension checkpoint schedules every node of the step, including the siblings of the node that asked:",
         },
         {
           type: "code",
@@ -103,7 +142,7 @@ let checkpoint = recorder.mint_checkpoint(
         },
         {
           type: "p",
-          text: "Two consequences follow. First, the resume value is broadcast: every node in the first step after a resume sees `resume_value()` return `Some`, not only the node that asked. A node that should react only to its own question has to check its own state. Second, everything a node does before calling `interrupt` happens again on resume, so that part must be safe to repeat.",
+          text: "Two consequences follow. First, the resume value is broadcast: every node in the first step after a resume sees `resume_value()` return `Some`, including nodes that never asked. A node that should react only to its own question has to check its own state. Second, everything a node does before calling `interrupt` happens again on resume, so that part must be safe to repeat.",
         },
       ],
     },
@@ -157,13 +196,40 @@ curl -s localhost:8080/threads/$TID/state
         },
         {
           type: "p",
-          text: "On the server, a person answers with `POST /approvals/{run_id}/decide` and `{\"decision\": \"approve\"}` or `\"deny\"`. Approving mints one token scoped to that request's effect id and resumes the run with it. Denying resumes the run with the refusal, which the model reads as a tool result. `GET /approvals` lists what is waiting.",
+          text: "You can see it in the in-process ReAct example. Its scripted model asks for two tools at once, and neither tool declares an effect, so both default to `NonIdempotent`.",
+        },
+        {
+          type: "lab",
+          title: "An approval interrupt",
+          intro: "Run the prebuilt ReAct agent with its scripted model. Watch where the run stops.",
+          commands: `cd rusty-core
+cargo run --example react_agent`,
+          output: `=== Rusty Core: prebuilt ReAct agent demo ===
+
+graph compiled: 2 nodes, entry point \`agent\`
+
+user: What is 17 + 25? Also, echo 'Bonjour, ReAct!' back to me.
+
+[step 0] active: agent
+  ├─ agent start (step 0)
+    [mock-llm] chat() called: 1 message(s) in context, 2 tool schema(s) offered
+      ctx[0] User: What is 17 + 25? Also, echo 'Bonjour, ReAct!' back to me.
+  ├─ agent end   (step 0)
+  ├─ barrier merge (step 0): channels [messages]
+[step 1] active: tools
+  ├─ tools start (step 1)
+run interrupted with payload: {"kind":"approval","requests":[{"arguments":{"a":17,"b":25,"op":"add"},"call_id":"call_1","effect_id":"a11383ab…","kind":"calculator","tool":"calculator"},{"arguments":{"text":"Bonjour, ReAct!"},"call_id":"call_2","effect_id":"3f619ba8…","kind":"echo","tool":"echo"}]}`,
+          capturedAt: "fedbb3a · 2026-09-29",
+        },
+        {
+          type: "p",
+          text: "The `tools` node never calls either tool. One interrupt carries both requests, each with an `effect_id` that an approval is scoped to. On the server, a person answers with `POST /approvals/{run_id}/decide` and `{\"decision\": \"approve\"}` or `\"deny\"`. Approving mints one token scoped to that request's effect id and resumes the run with it. Denying resumes the run with the refusal, which the model reads as a tool result. `GET /approvals` lists what is waiting.",
         },
       ],
     },
     {
       id: "trade-offs",
-      title: "Trade-offs",
+      title: "Costs",
       blocks: [
         {
           type: "rows",
@@ -185,26 +251,6 @@ curl -s localhost:8080/threads/$TID/state
       ],
     },
   ],
-  takeaways: [
-    "A node asks with `Err(ctx.interrupt(payload))` and reads the answer with `ctx.resume_value()`.",
-    "The interrupted step is discarded and every node in it is scheduled again.",
-    "Resume is another run on the same thread with a resume value, in Rust or over HTTP.",
-    "Code before the `interrupt` call runs twice, so it must be safe to repeat.",
-  ],
-  quiz: [
-    {
-      q: "Nodes A and B run in the same step. A finishes, then B interrupts. On resume, which nodes run?",
-      a: "Both. A's writes were discarded with the step, and the suspension checkpoint schedules the whole active set.",
-    },
-    {
-      q: "Why does the approve node check `resume_value()` before calling `interrupt`?",
-      a: "Because on resume the node runs again from the top. Checking first is how it tells the second run from the first.",
-    },
-    {
-      q: "The server restarts while a run is interrupted. Is the question lost?",
-      a: "No. The suspension checkpoint is stored, and a new run on the thread with `command.resume` continues from it.",
-    },
-  ],
   sources: [
     { path: "rusty-core/src/node.rs", what: "NodeContext::interrupt, resume_value" },
     { path: "rusty-core/src/executor.rs", what: "suspension checkpoint, ExecutionOutcome::Interrupted" },
@@ -212,5 +258,5 @@ curl -s localhost:8080/threads/$TID/state
     { path: "rusty-server/src/approvals.rs", what: "POST /approvals/{run_id}/decide" },
     { path: "docs/server-quickstart.md", what: "Interrupt and resume over HTTP" },
   ],
-  related: [{ label: "Book: Pause, resume, and the human timescale", href: "/guide/10-durability.html#pause-resume-and-the-human-timescale" }],
+  deeper: [{ book: "10-durability.html#pause-resume-and-the-human-timescale", label: "Durability: pause, resume, and the human timescale" }],
 };

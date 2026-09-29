@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { marked } from "marked";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repo = resolve(root, process.env.RUSTY_REPO_PATH ?? "../../rusty-src");
@@ -120,6 +121,31 @@ const substantive = (code) =>
 const REPO_LINK = /https:\/\/github\.com\/dev-amjad-shaikh\/rusty\/(?:blob|tree)\/([^/\s)"'`]+)\/([^\s)"'`#?]+)/g;
 const TERM_NAMES = new Set(TERMS.map((t) => t.term.toLowerCase()));
 const CHAPTER_IDS = new Set(CHAPTERS.map((c) => c.id));
+
+// Book anchors use VitePress-style heading slugs (same as src/content/book.ts).
+const slugify = (t) =>
+  t.normalize("NFKD").replace(/[\u0300-\u036F]/g, "")
+    .replace(/[\s~`!@#$%^&*()\-_+=[\]{}|\\;:"'“”‘’<>,.?/]+/g, "-")
+    .replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "").replace(/^(\d)/, "_$1").toLowerCase();
+const anchorCache = new Map();
+function bookAnchors(md) {
+  if (!anchorCache.has(md)) {
+    const path = join(guideDir, md);
+    anchorCache.set(md, existsSync(path)
+      ? new Set(marked.lexer(readFileSync(path, "utf8")).filter((t) => t.type === "heading").map((t) => slugify(t.text.replace(/<[^>]+>/g, ""))))
+      : null);
+  }
+  return anchorCache.get(md);
+}
+/** "10-durability.html#anchor" → an error string, or null when it resolves. */
+function checkBookRef(ref) {
+  const [file, anchor] = ref.split("#");
+  const md = file.replace(/\.html$/, ".md");
+  const ids = bookAnchors(md);
+  if (!ids) return `guide/${md} does not exist`;
+  if (anchor && !ids.has(anchor)) return `no heading with anchor #${anchor} in guide/${md}`;
+  return null;
+}
 const guideDir = join(root, "guide");
 
 /** Every string anywhere inside a value. */
@@ -135,6 +161,20 @@ const fail = (where, what, detail = "") => failures.push({ where, what, detail }
 let codeBlocks = 0;
 let linesChecked = 0;
 
+// The course map: book-backed chapters and chapters covered by a lesson section.
+for (const c of CHAPTERS) {
+  if (c.book) {
+    const err = checkBookRef(c.book);
+    if (err) fail(`course ${c.id}`, `book: ${c.book}`, err);
+  }
+  if (c.within) {
+    const [slug, sec] = c.within.split("#");
+    const l = lessons.find((x) => x.slug === slug);
+    if (!l) fail(`course ${c.id}`, `within: ${c.within}`, `no lesson with slug ${slug}`);
+    else if (sec && !l.sections.some((x) => x.id === sec)) fail(`course ${c.id}`, `within: ${c.within}`, `lesson ${slug} has no section #${sec}`);
+  }
+}
+
 for (const lesson of lessons) {
   const where = `lesson ${lesson.id} ${lesson.slug}`;
 
@@ -142,8 +182,8 @@ for (const lesson of lessons) {
   for (const s of lesson.sources ?? []) if (!pathExists(s.path)) fail(where, `sources: ${s.path}`, "path does not exist");
   for (const id of lesson.before ?? []) if (!CHAPTER_IDS.has(id)) fail(where, `before: ${id}`, "no such chapter id");
   for (const d of lesson.deeper ?? []) {
-    const md = d.book.split("#")[0].replace(/\.html$/, ".md");
-    if (!existsSync(join(guideDir, md))) fail(where, `deeper: ${d.book}`, `guide/${md} does not exist`);
+    const err = checkBookRef(d.book);
+    if (err) fail(where, `deeper: ${d.book}`, err);
   }
 
   for (const section of lesson.sections) {

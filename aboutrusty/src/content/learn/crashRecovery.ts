@@ -8,7 +8,7 @@ export const crashRecovery: Lesson = {
   source: "rusty-server/tests/crash_recovery.rs",
   before: ["3.1"],
   summary:
-    "Checkpoints protect a run's state. They don't protect the world outside it: an email sent just before a crash gets sent again when the step reruns. Rusty's durable task queue closes that gap with leases and idempotency keys. This lesson walks through the test that proves it, with real processes and real SIGKILLs.",
+    "Checkpoints protect a run's state. The world outside it is another matter: an email sent just before a crash gets sent again when the step reruns. Rusty's durable task queue closes that gap with leases and idempotency keys, and one test proves it with real processes and real SIGKILLs.",
   glance: {
     learn: "Why a crash between an effect and its report is the hard case",
     try: "Stepping through two kills and a restart",
@@ -17,8 +17,8 @@ export const crashRecovery: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
+      id: "window",
+      title: "The crash window",
       blocks: [
         {
           type: "p",
@@ -26,11 +26,11 @@ export const crashRecovery: Lesson = {
         },
         {
           type: "p",
-          text: "This window, where the effect is durable at the provider but its completion was never reported, can't be closed by saving more often. Something has to make the second attempt harmless.",
+          text: "In this window the effect is durable at the provider, but its completion was never reported. Saving more often can't close it. Something has to make the second attempt harmless.",
         },
         {
           type: "p",
-          text: "docs/durable-work-design.md states the promise precisely: **effectively-once execution when applications use idempotency**, not exactly-once side effects in general. Delivery through the queue is at-least-once. The idempotency key, passed all the way to the effect, collapses duplicate deliveries into one visible effect.",
+          text: "docs/durable-work-design.md states the promise precisely: **effectively-once execution when applications use idempotency**. Delivery through the queue is at-least-once. The idempotency key, passed all the way to the effect, collapses duplicate deliveries into one visible effect.",
         },
       ],
     },
@@ -44,11 +44,11 @@ export const crashRecovery: Lesson = {
           rows: [
             {
               label: "Durable task records",
-              text: "A task enqueued with `POST /tasks` is stored by the server with its status, attempt counter, and idempotency key. The record survives the server's death.",
+              text: "A [[Durable task|task]] enqueued with `POST /tasks` is stored by the server with its status, attempt counter, and idempotency key. The record survives the server's death.",
             },
             {
               label: "Leases",
-              text: "A worker that claims a task holds it for a lease period and extends it with heartbeats. If the worker dies, the lease expires and the task becomes visible to other workers again.",
+              text: "A worker that claims a task holds it for a [[Lease|lease]] period and extends it with heartbeats. If the worker dies, the lease expires and the task becomes visible to other workers again.",
             },
             {
               label: "Idempotency keys",
@@ -71,9 +71,9 @@ export const crashRecovery: Lesson = {
       ],
     },
     {
-      id: "window",
+      id: "deterministic",
       title: "Making the crash deterministic",
-      toc: "The kill window",
+      toc: "Timing the kill",
       blocks: [
         {
           type: "p",
@@ -101,6 +101,14 @@ const EFFECT_PAUSE_MS: u64 = 30_000;`,
       title: "Where the duplicate is stopped",
       toc: "Dedup",
       blocks: [
+        {
+          type: "predict",
+          question: "Across the whole test, how many times does the worker's `send_receipt` code run, and how many lines land in the provider's ledger?",
+          options: ["Once, one line", "Twice, two lines", "Twice, one line"],
+          answer: 2,
+          explain:
+            "Attempt 1 sends and is killed before it reports. Attempt 2 really runs on the second worker, finds the idempotency key in the ledger, and returns the stored result. The queue delivered twice; the provider acted once.",
+        },
         {
           type: "p",
           text: "The second attempt really runs. The queue delivered the task twice, as at-least-once delivery allows. The duplicate is stopped at the effect, by the provider looking up the key:",
@@ -135,11 +143,15 @@ if let Some(record) = self.find(&key) {
           type: "code",
           file: "rusty-server/tests/crash_recovery.rs",
           symbol: "crash_mid_effect_recovers_without_losing_state_or_duplicating_the_effect",
-          code: `assert_eq!(completed["attempt"], json!(2));
+          code: `assert_eq!(completed["attempt"], json!(2), "task record: {completed}");
 assert_eq!(completed["idempotency_key"], json!(key));
 
 let records = ledger_records(&ledger, &key);
-assert_eq!(records.len(), 1, "the external effect fired more than once: {records:?}");
+assert_eq!(
+    records.len(),
+    1,
+    "the external effect fired more than once: {records:?}"
+);
 
 assert_eq!(completed["result"]["deduplicated"], json!(true));
 assert_eq!(completed["result"]["provider_id"], json!(provider_id));
@@ -153,18 +165,27 @@ assert_eq!(completed["receipt"]["provider_id"], json!(provider_id));`,
             "**A receipt that matches.** The stored result and the effect receipt carry the first attempt's `provider_id`.",
           ],
         },
-        { type: "p", text: "Run it yourself. The test runs the compiled examples, so build them first:" },
         {
-          type: "code",
-          lang: "shell",
-          code: `cargo build --workspace --examples
+          type: "lab",
+          title: "Run the crash test",
+          intro:
+            "The test spawns the compiled `server_demo` and `activity_worker_demo` binaries, so build the examples first. It kills two processes and restarts one, and still finishes in a few seconds.",
+          commands: `cargo build --workspace --examples
 cargo test -p rusty-agent-server --test crash_recovery`,
+          output: `…
+     Running tests/crash_recovery.rs (target/debug/deps/crash_recovery-e828510dc3b7dff7)
+
+running 1 test
+test crash_mid_effect_recovers_without_losing_state_or_duplicating_the_effect ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.73s`,
+          capturedAt: "fedbb3a · 2026-09-29",
         },
       ],
     },
     {
       id: "trade-offs",
-      title: "Trade-offs",
+      title: "Limits",
       blocks: [
         {
           type: "rows",
@@ -186,26 +207,6 @@ cargo test -p rusty-agent-server --test crash_recovery`,
       ],
     },
   ],
-  takeaways: [
-    "Checkpoints protect run state; leases and idempotency keys protect external effects.",
-    "Delivery is at-least-once. The key makes the repeat a no-op at the provider.",
-    "The test kills both processes with SIGKILL inside the window between effect and report.",
-    "It asserts attempt 2, one ledger line, and a receipt with the first attempt's provider id.",
-  ],
-  quiz: [
-    {
-      q: "Why doesn't a checkpoint written after the email prevent a second email?",
-      a: "The crash happens between the email and the report, before any boundary is saved. The rerun has no record that the email went out.",
-    },
-    {
-      q: "In the test, how many times does the worker's effect code run? How many emails land?",
-      a: "Twice, once per attempt. One line lands in the ledger, because attempt 2 finds the key and returns the stored result.",
-    },
-    {
-      q: "What makes the task visible to worker-2?",
-      a: "Worker-1's lease expires, since nobody heartbeats it after the kill, and the task returns to visibility.",
-    },
-  ],
   sources: [
     { path: "rusty-server/tests/crash_recovery.rs", what: "The test" },
     { path: "rusty-worker/examples/activity_worker_demo.rs", what: "FileProvider, the dedup branch" },
@@ -213,8 +214,9 @@ cargo test -p rusty-agent-server --test crash_recovery`,
     { path: "docs/durable-work-design.md", what: "The effectively-once contract" },
     { path: "rusty-core/src/durable.rs", what: "Task envelope and retry contracts" },
   ],
+  deeper: [{ book: "10-durability.html#level-two-durable-work", label: "Durability: durable work" }],
   related: [
     { label: "Recording: docs/screenshots/crash-resume.gif", href: "https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/screenshots/crash-resume.gif" },
-    { label: "Book: Durability", href: "/guide/10-durability.html#level-two-durable-work" },
+    { label: "4.2 Leases, heartbeats, and retries", href: "/learn/leases-and-retries" },
   ],
 };

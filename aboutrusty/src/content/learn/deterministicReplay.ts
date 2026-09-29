@@ -8,7 +8,7 @@ export const deterministicReplay: Lesson = {
   source: "rusty-core/src/replay.rs",
   before: ["2.3"],
   summary:
-    "Every run records a journal of what happened: each step, each node's input and output, each model and tool call. Exact replay runs the graph again and answers every model and tool call from that journal, making no outbound calls. If the replayed run asks for something the recording doesn't have, it fails at the first difference. This lesson covers how that works and what it takes.",
+    "Every run records a journal of what happened: each step, each node's input and output, each model and tool call. Exact replay runs the graph again and answers every model and tool call from that journal, making no outbound calls. If the replayed run asks for something the recording doesn't have, it fails at the first difference.",
   glance: {
     learn: "What makes a run reproducible, and where it can't be",
     try: "Replaying a run, then changing a prompt to make it diverge",
@@ -18,15 +18,16 @@ export const deterministicReplay: Lesson = {
   sections: [
     {
       id: "problem",
-      title: "The problem",
+      title: "Why a second run differs",
+      toc: "Sources of difference",
       blocks: [
         {
           type: "p",
-          text: "An agent gave a wrong answer yesterday. To debug it you want to run it again and watch. But the model won't return the same text twice, the tools read a world that has changed, and timestamps and ids differ on every run. Running it again gives you a different run.",
+          text: "An agent gave a wrong answer yesterday. To debug it, you run it again and watch. But the model won't return the same text twice, the tools read a world that has changed, and timestamps and ids differ on every run. Running it again gives you a different run.",
         },
         {
           type: "p",
-          text: "Exact replay removes each source of difference: recorded answers for model and tool calls, a logical clock, and a seeded random number generator.",
+          text: "Exact [[Replay|replay]] removes each source of difference: recorded answers for model and tool calls, a logical clock, and a seeded random number generator.",
         },
       ],
     },
@@ -90,6 +91,14 @@ RunConfig::new("react-record-replay")
       title: "Serving calls from the journal",
       toc: "Replay",
       blocks: [
+        {
+          type: "predict",
+          question: "During exact replay, where do state merges and routing decisions come from?",
+          options: ["They are read back from the journal", "The executor recomputes them", "They are skipped; only calls are replayed"],
+          answer: 1,
+          explain:
+            "Only calls to the outside world are served from the recording. Merges, routing, and checkpoints are recomputed, and `run_and_verify` then checks the recomputed events against the recorded ones.",
+        },
         { type: "p", text: "Step through a replay of a two-turn ReAct run, then change the prompt and replay again:" },
         { type: "diagram", name: "replay" },
         {
@@ -124,14 +133,47 @@ RunConfig::new("react-record-replay")
       title: "Run it",
       blocks: [
         {
-          type: "p",
-          text: "The example records a ReAct run with a scripted model and an echo tool, then replays it over models and tools that panic if called:",
+          type: "lab",
+          title: "Record, then replay with zero calls",
+          intro:
+            "The example records a ReAct run with a scripted model and an echo tool, then replays it over a model and a tool that panic if called. Watch the sentinel counts and the byte-identical check.",
+          commands: `cd rusty-core
+cargo run --example react_record_replay`,
+          output: `=== Rusty Core: ReAct record -> exact replay ===
+
+--- phase 1: recording the run ---
+    [mock-llm] chat() called (record mode: this runs for real)
+    [tool:echo] -> "hello" (record mode: this runs for real)
+    [mock-llm] chat() called (record mode: this runs for real)
+recorded 18 event(s); head hash 5a97fa15260a9e75…
+  seq  2 ModelCall node=Some("agent") parent=Some("run-react-demo:1") effect=NonIdempotent
+  seq  8 ToolCall node=Some("tools") parent=Some("run-react-demo:7") effect=ReadOnly
+  seq 14 ModelCall node=Some("agent") parent=Some("run-react-demo:13") effect=NonIdempotent
+
+--- phase 2: exact replay (sentinels must never fire) ---
+sentinel invocations: model=0, tool=0 (zero outbound calls)
+replayed 18 event(s); journals byte-identical: true
+final states identical: true (4 messages; last: Some("The echo said: hello."))`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change:
+              "Give the replay a different input. In the `replay.run_and_verify(...)` call, replace `initial` with a state whose user message is `\"echo 'goodbye' back to me\"`.",
+            predict: "Does the replay produce a new answer, fire a sentinel, or stop? If it stops, where?",
+            result:
+              "It stops at the first model call. Phase 1 records as before, then phase 2 fails with `Error: Node(...)`: node `agent` failed at super-step 0: replay error: replay divergence at recorded seq 2 (ModelCall). The message gives both canonical request hashes. No sentinel fired: the request was compared with the journal before anything could be called.",
+          },
         },
-        { type: "code", lang: "shell", code: `cd rusty-core
-cargo run --example react_record_replay` },
+        {
+          type: "predict",
+          question: "Now change the user message in `initial` itself, which both phases use: `\"echo 'hello' back to me, please\"`. The scripted model's answers stay the same. What happens?",
+          options: ["Replay diverges at seq 2", "Replay passes, with the same head hash as before", "Replay passes, with a different head hash"],
+          answer: 2,
+          explain:
+            "We ran it. Replay passes: 18 events, byte-identical journals, zero sentinel calls. The recorded head hash changes from `5a97fa15260a9e75…` to `e435c3514b2ed0c2…`, because the input is part of the evidence. Replay proves a run reproduces its own recording, whatever that recording contains.",
+        },
         {
           type: "p",
-          text: "It prints the sentinel call counts (zero) and whether the two journals are byte-identical. `rusty-core/tests/replay.rs` asserts the same in `exact_replay_reproduces_journal_and_state_byte_identically`, and `divergent_graph_fails_loudly_with_sequence_and_hashes` covers the failure path.",
+          text: "`rusty-core/tests/replay.rs` asserts the same in `exact_replay_reproduces_journal_and_state_byte_identically`, and `divergent_graph_fails_loudly_with_sequence_and_hashes` covers the failure path.",
         },
         {
           type: "p",
@@ -167,17 +209,7 @@ cargo run --example react_record_replay` },
       ],
     },
   ],
-  takeaways: [
-    "The journal records every step and every model, tool, remote, and WASM call, chained by a head hash.",
-    "Exact replay serves those four call kinds from the journal and recomputes everything else.",
-    "A logical clock and a seeded RNG make timestamps and ids reproducible.",
-    "A different request fails loudly at the first recorded sequence number that doesn't match.",
-  ],
   quiz: [
-    {
-      q: "During exact replay, does the executor recompute state merges or read them from the journal?",
-      a: "It recomputes them. Only model, tool, remote, and WASM calls are served. The recomputed events must match the recording.",
-    },
     {
       q: "You edit a tool's description and replay an old run. What happens?",
       a: "Tool schemas are part of the model request, so the request hash differs and replay fails with a divergence at that call's sequence number.",
@@ -194,5 +226,6 @@ cargo run --example react_record_replay` },
     { path: "rusty-core/examples/react_record_replay.rs", what: "Record, then replay with panic sentinels" },
     { path: "rusty-core/tests/replay.rs", what: "Determinism and divergence tests" },
   ],
-  related: [{ label: "Book: Journals & evidence", href: "/guide/03-journals.html" }],
+  deeper: [{ book: "03-journals.html#replay-the-point-of-the-exercise", label: "Journals & evidence: replay" }],
+  related: [{ label: "5.1 The run journal", href: "/learn/run-journal" }],
 };

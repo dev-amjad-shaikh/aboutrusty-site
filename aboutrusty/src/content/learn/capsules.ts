@@ -7,7 +7,7 @@ export const capsules: Lesson = {
   minutes: 16,
   source: "rusty-core/src/capsule_host.rs",
   summary:
-    "A capsule is untrusted code, compiled to a WASM component, that runs inside the runtime with only the reach its manifest declares. An ungranted capability isn't checked and refused at the call: the host never links the import, so the guest has nothing to call. This lesson covers the manifest, how grants become imports, how tenant overlays narrow them, and how budgets and Cedar bound the rest.",
+    "A capsule is untrusted code, compiled to a WASM component, that runs inside the runtime with only the reach its manifest declares. For an ungranted capability the host never links the import, so the guest has nothing to call. Tenant overlays can narrow the grants, and budgets and Cedar policy bound the rest.",
   glance: {
     learn: "Why an ungranted import is a door that was never built",
     try: "Toggling manifest grants and a tenant overlay to see what links",
@@ -17,7 +17,7 @@ export const capsules: Lesson = {
   sections: [
     {
       id: "problem",
-      title: "The problem",
+      title: "Where tool code runs",
       blocks: [
         {
           type: "p",
@@ -25,7 +25,7 @@ export const capsules: Lesson = {
         },
         {
           type: "p",
-          text: "Sandboxes that check each call at runtime are better, but a check is code that can have a bug or be skipped. You want untrusted code to be unable to name a capability it wasn't given.",
+          text: "Sandboxes that check each call at runtime are better, but a check is code that can have a bug or be skipped. A [[Capsule|capsule]] goes further: untrusted code can't even name a capability it wasn't given.",
         },
       ],
     },
@@ -73,6 +73,18 @@ export const capsules: Lesson = {
         {
           type: "p",
           text: "The capability host (`rusty-core/src/capsule_host.rs`, feature `wasm`) runs capsules as WASM Component Model guests on wasmtime. A component lists its imports. The one world this release ships, `rusty:capsule/world@0.1.0`, has two capability imports: `rusty:capsule/net@0.1.0` (a `fetch` function) and `rusty:capsule/clock@0.1.0` (`now-millis`).",
+        },
+        {
+          type: "predict",
+          question: "A capsule's component imports `rusty:capsule/clock@0.1.0`, but its manifest grants only network. When is the problem caught?",
+          options: [
+            "When the guest first calls `now-millis`",
+            "Before the guest runs: the invocation is refused",
+            "Never: the clock is ambient, so the call succeeds",
+          ],
+          answer: 1,
+          explain:
+            "The host checks the component's import list against the grants before it links or instantiates anything. An import with no matching grant ends the invocation with a journaled denial, and no guest code runs.",
         },
         {
           type: "p",
@@ -171,7 +183,19 @@ export const capsules: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "An operator can attach a `CapsuleOverlay` to a tenant: a grant ceiling for some or all of the tenant's capsules. The effective grant set is the intersection of the manifest's grants and the overlay's, computed per capability kind and per scope list:",
+          text: "An operator can attach a `CapsuleOverlay` to a [[Tenant|tenant]]: a grant ceiling for some or all of the tenant's capsules.",
+        },
+        {
+          type: "predict",
+          question: "The manifest grants network to `api.example.com`. The tenant's overlay grants network to `files.example.com` only. What network reach does the capsule get?",
+          options: ["Both hosts", "`api.example.com` only", "`files.example.com` only", "None"],
+          answer: 3,
+          explain:
+            "The effective set is the intersection of the two, per capability kind and per scope list. The two grants share no host, so the network grant drops out entirely. An overlay can remove reach and never add it.",
+        },
+        {
+          type: "p",
+          text: "The intersection is computed per capability kind and per scope list:",
         },
         {
           type: "code",
@@ -286,15 +310,29 @@ assert_eq!(
         },
         {
           type: "p",
-          text: "The test then reads both denials back from `GET /runs/{id}/events`, verifies the run's signed receipt over the journal, and checks that altering a journaled event fails verification. The refusals are evidence you can show later, not log lines.",
+          text: "The test then reads both denials back from `GET /runs/{id}/events`, verifies the run's signed receipt over the journal, and checks that altering a journaled event fails verification. The refusals are journaled evidence you can show later.",
         },
-        { type: "p", text: "Run it with the feature on:" },
-        { type: "code", lang: "shell", code: "cargo test -p rusty-agent-server --features capsules --test capsules_release" },
+        {
+          type: "lab",
+          title: "Run the release proof",
+          intro:
+            "The `capsules` feature pulls in wasmtime and Cedar. The first build of this test took about two minutes here; the test itself runs in well under a second.",
+          commands: "cargo test -p rusty-agent-server --features capsules --test capsules_release",
+          output: `…
+    Finished \`test\` profile [unoptimized + debuginfo] target(s) in 2m 14s
+     Running tests/capsules_release.rs (target/debug/deps/capsules_release-9e6376efd6f4d450)
+
+running 1 test
+test visible_denial_release_proof ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s`,
+          capturedAt: "fedbb3a · 2026-09-29",
+        },
       ],
     },
     {
       id: "trade-offs",
-      title: "Trade-offs",
+      title: "Limits",
       blocks: [
         {
           type: "rows",
@@ -308,7 +346,7 @@ assert_eq!(
               text: "The `capsules` feature pulls in wasmtime and `cedar-policy`, lengthens clean builds, and needs Rust 1.89. Default builds are unaffected.",
             },
             {
-              label: "Invocation cost, not a machine boundary.",
+              label: "A process boundary is still separate.",
               text: "Capsules isolate untrusted invocations inside one process. For hostile multi-tenant processes, a microVM around the whole server is still the right tool, and the two compose.",
             },
           ],
@@ -316,22 +354,7 @@ assert_eq!(
       ],
     },
   ],
-  takeaways: [
-    "The manifest declares every capability a capsule may reach; its id is the hash of that declaration.",
-    "The host links only granted imports. An ungranted import is refused before the guest runs.",
-    "Granted imports check their scope per call. Every use and every denial is journaled.",
-    "Effective grants are manifest ∩ overlay. Overlays can remove reach, never add it.",
-    "Fuel, a memory limiter, and epoch interruption bound what a granted capsule can consume.",
-  ],
   quiz: [
-    {
-      q: "A capsule's component imports `rusty:capsule/clock@0.1.0` and its manifest grants only network. What happens when it's invoked?",
-      a: "The host refuses the invocation before instantiating it, journaling a CapsuleDenied with an empty-scope absent grant of kind Clock. No guest code runs.",
-    },
-    {
-      q: "The manifest grants network to api.example.com. A tenant overlay grants network to files.example.com only. What's the effective network reach?",
-      a: "None. The two grants share no host, so the intersection drops the network grant entirely.",
-    },
     {
       q: "Why does a scoped denial need a runtime check when structural denial doesn't?",
       a: "The fetch import is linked, so the guest can call it. Whether the host, protocol, and method are inside the grant is only known when the call arrives.",
@@ -348,8 +371,8 @@ assert_eq!(
     { path: "rusty-server/tests/capsules_release.rs", what: "The visible-denial release proof" },
     { path: "docs/capsules-design.md", what: "The capsule rule and its lineage" },
   ],
-  related: [
-    { label: "Book: Capsules", href: "/guide/07-capsules.html" },
-    { label: "Lesson 9.3: Canary and shadow", href: "/learn/canary-and-shadow" },
+  deeper: [
+    { book: "07-capsules.html#the-capability-host-denial-you-can-show", label: "Capsules: the capability host" },
+    { book: "07-capsules.html#cedar-and-signed-run-receipts", label: "Capsules: Cedar and signed run receipts" },
   ],
 };
