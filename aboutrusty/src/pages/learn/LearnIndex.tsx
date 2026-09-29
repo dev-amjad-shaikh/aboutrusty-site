@@ -3,7 +3,24 @@ import { Link, useLocation } from "react-router";
 import { ACTS, PARTS } from "@/content/learn/course";
 import { lessons } from "@/content/learn";
 import { lessonHref } from "@/content/lessonLinks";
-import { readDone } from "./progress";
+import { PartCheck } from "./components/RevealQA";
+import { isChapterRead, readDone } from "./progress";
+
+/** Lessons that existed before the current round; any other lesson is marked new. */
+const EARLIER_LESSONS = new Set([
+  "state-channels",
+  "super-step-loop",
+  "routing",
+  "checkpoints",
+  "interrupts",
+  "leases-and-retries",
+  "crash-recovery",
+  "run-journal",
+  "deterministic-replay",
+  "canary-and-shadow",
+  "capsules",
+  "send-sync",
+]);
 
 const ROUTES = [
   { id: "new", name: "New to agent runtimes", path: "Start at part 1", target: 0 },
@@ -290,7 +307,7 @@ export function LearnIndex() {
                             </span>
                           )}
                           <span className="font-code text-[12px] text-[#8b837b]">
-                            {part.chapters.filter((c) => done.includes(c.id)).length}/{part.chapters.length}
+                            {part.chapters.filter((c) => isChapterRead(c.id, done)).length}/{part.chapters.length}
                           </span>
                         </div>
                       </div>
@@ -314,6 +331,9 @@ export function LearnIndex() {
                                     interactive
                                   </span>
                                 )}
+                                {lesson && !EARLIER_LESSONS.has(lesson.slug) && (
+                                  <span className="font-code text-[10.5px] uppercase tracking-[0.08em] text-[#9fd4a8]">new</span>
+                                )}
                                 {lesson && (
                                   <span
                                     className="rounded-[5px] border px-[7px] py-0.5 font-code text-[10.5px] text-[#f7ece4]"
@@ -330,7 +350,7 @@ export function LearnIndex() {
                                     book ↗
                                   </span>
                                 )}
-                                <span className="w-3.5 text-[13px] text-[#9fd4a8]">{done.includes(chapter.id) ? "✓" : ""}</span>
+                                <span className="w-3.5 text-[13px] text-[#9fd4a8]">{isChapterRead(chapter.id, done) ? "✓" : ""}</span>
                               </span>
                             </>
                           );
@@ -344,6 +364,7 @@ export function LearnIndex() {
                           );
                         })}
                       </div>
+                      <PartCheck n={i + 1} compact />
                     </div>
                   </div>
                 );
