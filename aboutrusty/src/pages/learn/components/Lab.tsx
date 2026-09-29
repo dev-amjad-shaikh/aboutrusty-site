@@ -124,7 +124,7 @@ export function Lab({
       <div className="flex flex-col gap-1.5">
         <span className="font-code text-[10.5px] uppercase tracking-[0.14em] text-[#f0862b]">Run it yourself</span>
         <span className="text-[19px] font-normal text-[#f7ece4]">{title}</span>
-        <span className="flex flex-col gap-2 text-[15.5px] leading-[1.6] text-[#cfc3b8]">
+        <span className="text-[15.5px] leading-[1.6] text-[#cfc3b8]">
           <Inline text={intro} />
         </span>
       </div>
