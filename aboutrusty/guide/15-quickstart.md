@@ -13,11 +13,9 @@ There are two ways in. The demo pair gives you Rusty Server and Rusty Studio wit
 ```bash
 git clone https://github.com/dev-amjad-shaikh/rusty.git && cd rusty
 ./scripts/dev.sh        # Rusty Server on :8100 + Rusty Studio on http://localhost:4400
-# or
-docker compose up       # the same pair in containers: Studio on http://localhost:8000 (base URL /api), API on :8100
 ```
 
-Open Studio (`http://localhost:4400` for `dev.sh`, `http://localhost:8000` for Compose). The first boot seeds an administrator and writes its password to `data/server-demo-checkpoints/bootstrap-admin.txt`. Sign in with it, change it, and delete the file. The in-app banner says the same. To run without sign-in on a laptop or in a test harness, start the demo with `RUSTY_OPEN=1`. A production boot refuses that mode regardless (`rusty-server/examples/server_demo.rs`).
+Open Studio at `http://localhost:4400`. The repo also ships a `docker compose` stack (Studio on :8000), but on current `main` its image build fails; the [Docker page](/docs?p=docker) has the one-line fix. The first boot seeds an administrator and writes its password to `data/server-demo-checkpoints/bootstrap-admin.txt`. Sign in with it, change it, and delete the file. The in-app banner says the same. To run without sign-in on a laptop or in a test harness, start the demo with `RUSTY_OPEN=1` against a store that has no users yet (for example `RUSTY_DEMO_STORE=./data/open-store`); on a store that already has an account it is ignored. A production boot refuses that mode regardless (`rusty-server/examples/server_demo.rs`).
 
 An agent whose behavior holds a conversation opens straight into chat, with the run's journaled evidence in the rail beside it. By default the demo's `react_agent` answers from a deterministic local model: no network, no credentials. To use a real model, put any OpenAI-compatible endpoint in a git-ignored `.env.rusty-local` at the repo root:
 
@@ -163,7 +161,7 @@ Once either door is open, these four exercises teach the most in the least time:
 4. **Fork and replay.** Fork a thread at an earlier checkpoint, replay on the fork, and diff the two branches.
 
 ::: tip Key takeaways
-- `./scripts/dev.sh` starts Server (:8100) and Studio (:4400); `docker compose up` serves Studio on :8000. The first boot seeds an administrator; `RUSTY_OPEN=1` opts out.
+- `./scripts/dev.sh` starts Server (:8100) and Studio (:4400). The first boot seeds an administrator; `RUSTY_OPEN=1` opts out.
 - The demo model is deterministic and offline. `.env.rusty-local` points it at a real OpenAI-compatible endpoint.
 - The library path is a `Cargo.toml` and a `main.rs`: `GraphRegistry`, `ServerConfig`, `serve`.
 - A resumable node checks `ctx.resume_value()` first and interrupts only when no decision has arrived.
