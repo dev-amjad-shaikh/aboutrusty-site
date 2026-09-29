@@ -51,10 +51,10 @@ export const ACTS: Act[] = [
         tag: "rusty-core",
         chapters: [
           { id: "2.1", t: "The four primitives", book: "02-mental-model.html#five-concepts" },
-          { id: "2.2", t: "State channels and reducers", book: "02-mental-model.html#one-run-end-to-end" },
+          { id: "2.2", t: "State channels and reducers", lesson: "state-channels" },
           { id: "2.3", t: "The super-step loop", lesson: "super-step-loop" },
           { id: "2.4", t: "Snapshot isolation and deterministic merges", book: "02-mental-model.html#five-concepts" },
-          { id: "2.5", t: "Routing and fan-out", book: "02-mental-model.html#five-concepts" },
+          { id: "2.5", t: "Routing and fan-out", lesson: "routing" },
           { id: "2.6", t: "The ReAct agent as a graph", book: "02-mental-model.html#one-run-end-to-end" },
         ],
       },
@@ -81,7 +81,7 @@ export const ACTS: Act[] = [
         tag: "R0.6",
         chapters: [
           { id: "4.1", t: "Why checkpoints aren't enough", book: "10-durability.html#level-two-durable-work" },
-          { id: "4.2", t: "Leases, heartbeats, and retries", book: "10-durability.html#level-two-durable-work" },
+          { id: "4.2", t: "Leases, heartbeats, and retries", lesson: "leases-and-retries" },
           { id: "4.3", t: "Idempotency keys and effect receipts", book: "10-durability.html#level-two-durable-work" },
           { id: "4.4", t: "Walkthrough: the crash_recovery test", lesson: "crash-recovery" },
         ],
@@ -91,7 +91,7 @@ export const ACTS: Act[] = [
         lead: "The Flight Recorder: journals, effect types, exact replay, and signed receipts.",
         tag: "R0.5",
         chapters: [
-          { id: "5.1", t: "The run journal", book: "03-journals.html#one-recorded-fact" },
+          { id: "5.1", t: "The run journal", lesson: "run-journal" },
           { id: "5.2", t: "The effect taxonomy", book: "12-policy-security.html" },
           { id: "5.3", t: "Deterministic replay", lesson: "deterministic-replay" },
           { id: "5.4", t: "Comparing two runs", book: "03-journals.html#replay-the-point-of-the-exercise" },
@@ -155,7 +155,7 @@ export const ACTS: Act[] = [
         lead: "Deny by default: capsules, authorization, and the credential broker.",
         tag: "R0.9",
         chapters: [
-          { id: "10.1", t: "Capsules", book: "07-capsules.html" },
+          { id: "10.1", t: "Capsules", lesson: "capsules" },
           { id: "10.2", t: "Authorization", book: "07-capsules.html#cedar-and-signed-run-receipts" },
           { id: "10.3", t: "The credential broker", book: "09-tools-connectors.html#the-connector-standard-one-shape-no-exceptions" },
         ],
@@ -165,7 +165,7 @@ export const ACTS: Act[] = [
         lead: "How Rust's type system and ownership shape the design, and what it costs.",
         tag: "",
         chapters: [
-          { id: "11.1", t: "Send, Sync, and parallel nodes", book: "02-mental-model.html#five-concepts" },
+          { id: "11.1", t: "Send, Sync, and parallel nodes", lesson: "send-sync" },
           { id: "11.2", t: "Ownership as transactions", within: "super-step-loop#barrier" },
           { id: "11.3", t: "Copy-on-write state", within: "checkpoints#delta-checkpoints" },
           { id: "11.4", t: "Effects as types", book: "12-policy-security.html" },

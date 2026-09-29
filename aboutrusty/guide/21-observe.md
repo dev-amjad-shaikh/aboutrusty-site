@@ -6,61 +6,76 @@ title: 21 · Observe with rusty-otel
 
 # Observe with rusty-otel
 
-Two chapters ago the book drew a line that matters operationally: the journal is *evidence* — complete, hash-chained, replayable — and telemetry is *for humans* — sampled, approximated, watched live. This chapter is the telemetry half. Rusty's executor is already instrumented with `tracing`; `rusty-otel` is the one-call wiring that routes those spans to your logs and your collector. You write no instrumentation code of your own.
+Chapter 03 separated two records of a run. The journal is evidence: complete, hash-chained, and replayable. Telemetry is for people watching the system live: sampled and approximate. This chapter covers telemetry. The executor is already instrumented with `tracing`. `rusty-otel` is a one-call setup that sends those spans to stderr and, optionally, to an OTLP collector. You write no instrumentation code.
 
 ## What you get for free
 
-The executor's span taxonomy mirrors the super-step loop, so a trace reads like the execution it records:
+The executor's spans follow the super-step loop, so a trace reads like the execution:
 
 | Span / event | Level | Fields | Meaning |
 |---|---|---|---|
-| `rusty.run` | INFO | `thread_id`, `max_steps` | One per `Executor::run`; root of the trace |
+| `rusty.run` | INFO | `thread_id`, `max_steps`, `resume`, `replay` | One per `Executor::run`; the root of the trace |
 | `rusty.super_step` | DEBUG | `step`, `active_nodes` | One per super-step |
 | `rusty.node` | INFO | `node`, `step` | One per spawned node task |
 | barrier-merge event | DEBUG | channels written | Reducer merge at each barrier |
-| run-complete event | INFO | `steps`, `duration_ms` | Run finished |
-| interrupt event | INFO | `node`, `step` | Run parked for a human |
-| error events | WARN | `node`, `step`, `error`, `retryable` | Node and routing failures, classified |
+| run-complete event | INFO | `steps`, `duration_ms` | The run finished |
+| interrupt event | INFO | `node`, `step` | The run parked for a human |
+| error events | WARN | `node`, `step`, `error`, `retryable` | Node and routing failures |
 
-Spans nest — `run` → `super_step` → `node` — so one `rusty.run` trace in Jaeger or Tempo fans out into the full execution tree with `thread_id`, `step`, and `node` on every span. The WARN-level error events carry the retryable classification from Chapter 10's taxonomy, which makes "their outage versus our wiring" a dashboard filter rather than a log archaeology project.
+Spans nest `run` → `super_step` → `node`. One `rusty.run` trace in Jaeger or Tempo expands into the full execution tree, with `thread_id`, `step`, and `node` available on the spans. Error events carry a `retryable` flag, so you can filter a dashboard by whether a failure is worth retrying.
 
 ## Setup
 
-Local development, no collector:
+For local development with no collector:
 
 ```rust
 let _guard = rusty_otel::init_local("my-agent")?;
 ```
 
-Pretty span logs go to stderr, filtered by `RUST_LOG` or the built-in default `info,rusty_agent_runtime=debug` — which surfaces the DEBUG super-step spans without flooding other crates. With a collector, one config object:
+Span logs print to stderr, filtered by `RUST_LOG` or, when it is unset, the default `info,rusty_agent_runtime=debug`. The default shows the DEBUG super-step spans without flooding logs from other crates.
+
+With a collector, pass one config value:
 
 ```rust
 let mut guard = rusty_otel::init(rusty_otel::OTelConfig {
     service_name: "my-agent".into(),
     otlp_endpoint: Some("http://localhost:4318/v1/traces".into()),
-    log_filter: None, // RUST_LOG, else the default above
+    log_filter: None, // explicit filter, else RUST_LOG, else the default above
 })?;
 
 // ... run graphs ...
 
-guard.shutdown(); // flush buffered spans before exit (idempotent; also on drop)
+guard.shutdown(); // flush buffered spans before exit; idempotent, and also runs on drop
 ```
 
-Two details worth knowing before you operate it. The log filter is **per-layer**: `RUST_LOG` gates the stderr logs only and never throttles OTLP export, so a restrictive `RUST_LOG=warn` still ships the full trace tree to the collector. And `init` succeeds once per process — the subscriber is global; a second call returns `SubscriberAlreadyInstalled` rather than double-registering. The crate ships a `docker-compose.yml` and collector config for a local Jaeger loop.
+Export is OTLP over HTTP. Two behaviors matter when you run it:
+
+- **The filter applies per layer.** The log filter gates the stderr layer only. It never throttles OTLP export, so `RUST_LOG=warn` still ships the full trace tree to the collector.
+- **Initialize once per process.** The subscriber is global. A second `init` returns `OTelError::SubscriberAlreadyInstalled` instead of registering twice.
+
+For a local trace viewer, the crate ships `rusty-otel/docker-compose.yml` and `rusty-otel/otel-collector-config.yaml`. The collector listens for OTLP on 4317 and 4318 and forwards to Jaeger all-in-one, whose UI is on port 16686.
+
+```mermaid
+flowchart LR
+    EX["Executor<br><small>tracing spans</small>"] --> SUB["rusty-otel subscriber"]
+    SUB -->|"filtered by RUST_LOG"| ERR["stderr logs"]
+    SUB -->|"unfiltered, OTLP/HTTP"| COL["collector :4318"] --> JG["Jaeger UI :16686"]
+```
 
 ## Telemetry and evidence, divided properly
 
-Use the trace tree for the live questions: is the fleet healthy, where is latency going, which node is erroring and is it retryable. Use the journal for the accountability questions: what exactly did this run do, what did the model see, what would it do if we re-drove it. The trace tells you a run took 40 seconds; the journal tells you what it was *for*. Studio's timeline view and the `rusty.run` trace are two readings of the same execution — one for a person watching now, one for the record that outlives the process.
+Use traces for live questions: is the fleet healthy, where does latency go, which node is failing, and is the failure retryable. Use the journal for accountability questions: what exactly this run did, what the model saw, and what it would do if re-driven. The trace tells you a run took 40 seconds. The journal tells you what happened in those 40 seconds, in order, with causes. Studio's run timeline reads the journal; your trace backend reads the spans. Operate both.
 
 ::: tip Key takeaways
-- `rusty-otel` is wiring, not instrumentation: one call, and the executor's existing spans flow to stderr or OTLP.
-- Spans nest run → super-step → node, with `thread_id` and `step` on everything.
-- `RUST_LOG` gates stderr only; OTLP export is never throttled by it. `init` is once per process; `shutdown()` flushes.
-- Traces answer live questions; the journal answers accountability questions. Operate both.
+- `rusty-otel` is setup, not instrumentation: one call routes the executor's existing spans to stderr or OTLP.
+- Spans nest run → super-step → node, with `thread_id`, `step`, and `node` as fields.
+- `RUST_LOG` gates stderr only; OTLP export is never throttled by it.
+- `init` works once per process; `shutdown()` flushes and also runs on drop.
+- Traces answer live questions; the journal answers accountability questions.
 :::
 
 **Further reading**
 
-- [rusty-otel/README.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-otel/README.md) — setup, the span table, the local collector compose file
-- [docs/architecture.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/architecture.md) — §6, the span taxonomy in context
-- [Chapter 03 · Journals & evidence](./03-journals.md) — the other half of observation
+- [rusty-otel/README.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-otel/README.md) — setup, the span table, the local collector stack
+- [docs/architecture.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/architecture.md) — the span taxonomy in context
+- [Chapter 03 · Journals & evidence](./03-journals.md) — the evidence half of observation

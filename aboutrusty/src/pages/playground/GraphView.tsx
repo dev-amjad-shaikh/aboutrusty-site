@@ -1,208 +1,137 @@
-import type { GraphEdgeDef, GraphNodeDef, RouteEdge, ScenarioDef } from "./engine";
+import { END, SCENARIOS, type GraphEdge, type GraphNode, type LaneStatus, type ScenarioId } from "./engine";
+import { C } from "./tokens";
 
-interface GraphViewProps {
-  def: ScenarioDef;
-  /** Nodes executing right now (rust border + soft rust glow). */
-  activeNodes: string[];
-  /** The scheduled next-node set. */
-  nextNodes: string[];
-  /** Routes fired by the last route phase. */
-  firedRoutes: RouteEdge[];
-  /** Bumped on every route phase to retrigger the edge animation. */
-  routeAnimKey: number;
-}
+export type NodeLook = "running" | LaneStatus | "next" | null;
 
-const NODE_W = 76;
-const NODE_H = 32;
-const END_W = 52;
+const LOOK_COLOR: Record<Exclude<NodeLook, null>, string> = {
+  running: C.accent,
+  ok: C.green,
+  interrupted: C.amber,
+  failed: C.red,
+  discarded: C.dim,
+  aborted: C.dim,
+  next: C.accent,
+};
 
-function halfW(n: GraphNodeDef): number {
-  return (n.kind === "end" ? END_W : NODE_W) / 2;
-}
+const H = 34;
+const width = (n: GraphNode) => (n.id === END ? 44 : Math.max(62, n.id.length * 7.3 + 22));
 
-function edgePath(from: GraphNodeDef, to: GraphNodeDef): string {
-  const hh = NODE_H / 2;
-  if (from.y === to.y) {
-    if (from.x < to.x) {
-      return `M ${from.x + halfW(from)} ${from.y} L ${to.x - halfW(to)} ${to.y}`;
-    }
-    // Reverse direction on the same row (the ReAct loopback): arc underneath.
-    const my = from.y + 62;
-    return `M ${from.x - 10} ${from.y + hh} C ${from.x - 24} ${my}, ${to.x + 24} ${my}, ${to.x + 10} ${to.y + hh}`;
+/** Where the segment from a node's center toward (tx, ty) leaves its box. */
+function exit(n: GraphNode, tx: number, ty: number): [number, number] {
+  const dx = tx - n.x;
+  const dy = ty - n.y;
+  if (n.id === END) {
+    const len = Math.hypot(dx, dy) || 1;
+    return [n.x + (dx / len) * 22, n.y + (dy / len) * 22];
   }
-  // Downward edge (to __end__): bottom center to top center.
-  return `M ${from.x} ${from.y + hh} L ${to.x} ${to.y - hh + 4}`;
+  const hw = width(n) / 2 + 2;
+  const hh = H / 2 + 2;
+  const t = Math.min(dx ? hw / Math.abs(dx) : Infinity, dy ? hh / Math.abs(dy) : Infinity);
+  return [n.x + dx * t, n.y + dy * t];
 }
 
-function labelPos(from: GraphNodeDef, to: GraphNodeDef): { x: number; y: number } {
-  if (from.y === to.y && from.x > to.x) {
-    return { x: (from.x + to.x) / 2, y: from.y + 56 };
-  }
-  return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 6 };
+function edgeGeometry(a: GraphNode, b: GraphNode, e: GraphEdge) {
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const bend = e.bend ?? 0;
+  const cx = mx + (-(b.y - a.y) / len) * bend;
+  const cy = my + ((b.x - a.x) / len) * bend;
+  const [x1, y1] = exit(a, cx, cy);
+  const [x2, y2] = exit(b, cx, cy);
+  const d = bend ? `M${x1},${y1} Q${cx},${cy} ${x2},${y2}` : `M${x1},${y1} L${x2},${y2}`;
+  return { d, lx: bend ? (x1 + 2 * cx + x2) / 4 : mx, ly: bend ? (y1 + 2 * cy + y2) / 4 : my };
 }
 
 /**
- * The compiled graph, drawn as plain SVG — no graph library. Nodes are ink
- * panels with hairline borders; the active node carries a rust border and a
- * soft rust glow, and when routing fires (Command::goto / Route) a rust
- * packet travels the chosen edge.
+ * The compiled graph. Nodes take the color of their state in the step on
+ * screen; edges the step routed through light up after the Route stage.
  */
 export function GraphView({
-  def,
-  activeNodes,
-  nextNodes,
-  firedRoutes,
-  routeAnimKey,
-}: GraphViewProps) {
-  const nodeById = new Map(def.nodes.map((n) => [n.id, n]));
-  const fired = new Set(firedRoutes.map((r) => `${r.from}->${r.to}`));
-
-  const renderEdge = (e: GraphEdgeDef) => {
-    const from = nodeById.get(e.from);
-    const to = nodeById.get(e.to);
-    if (!from || !to) return null;
-    const d = edgePath(from, to);
-    const isFired = fired.has(`${e.from}->${e.to}`);
-    const lp = labelPos(from, to);
-    return (
-      <g key={`${e.from}->${e.to}`}>
-        <path
-          d={d}
-          fill="none"
-          className={
-            isFired
-              ? "stroke-primary"
-              : e.kind === "conditional"
-                ? "stroke-muted-foreground/40"
-                : "stroke-muted-foreground/60"
-          }
-          strokeWidth={isFired ? 2 : 1}
-          strokeDasharray={e.kind === "conditional" ? "5 4" : undefined}
-          markerEnd="url(#rusty-arrow)"
-        />
-        {e.label && (
-          <text
-            x={lp.x}
-            y={lp.y}
-            textAnchor="middle"
-            className="fill-muted-foreground font-code"
-            fontSize={9}
-          >
-            {e.label}
-          </text>
-        )}
-        {isFired && (
-          <circle
-            key={routeAnimKey}
-            r={4}
-            className="fill-primary"
-            style={{ filter: "drop-shadow(0 0 6px rgba(240,134,43,0.7))" }}
-          >
-            <animateMotion dur="0.7s" path={d} fill="freeze" />
-            <animate
-              attributeName="opacity"
-              from="1"
-              to="0"
-              begin="0.6s"
-              dur="0.25s"
-              fill="freeze"
-            />
-          </circle>
-        )}
-      </g>
-    );
-  };
-
-  const renderNode = (n: GraphNodeDef) => {
-    const isActive = activeNodes.includes(n.id);
-    const isNext = !isActive && nextNodes.includes(n.id);
-    const w = halfW(n) * 2;
-    return (
-      <g key={n.id} className={isActive ? "animate-pulse" : undefined}>
-        <rect
-          x={n.x - w / 2}
-          y={n.y - NODE_H / 2}
-          width={w}
-          height={NODE_H}
-          rx={n.kind === "end" ? NODE_H / 2 : 8}
-          className={
-            isActive
-              ? "fill-card stroke-primary"
-              : n.kind === "end"
-                ? "fill-secondary stroke-muted-foreground/50"
-                : isNext
-                  ? "fill-accent stroke-primary/60"
-                  : "fill-card stroke-border"
-          }
-          style={
-            isActive
-              ? { filter: "drop-shadow(0 0 9px rgba(240,134,43,0.45))" }
-              : undefined
-          }
-          strokeWidth={isActive ? 1.8 : isNext ? 1.4 : 1}
-          strokeDasharray={n.kind === "end" ? "4 3" : undefined}
-        />
-        <text
-          x={n.x}
-          y={n.y + 3.5}
-          textAnchor="middle"
-          fontSize={11}
-          className={
-            isActive
-              ? "fill-accent-foreground font-code font-semibold"
-              : "fill-foreground font-code"
-          }
-        >
-          {n.label}
-        </text>
-        {isActive && (
-          <text
-            x={n.x}
-            y={n.y - NODE_H / 2 - 6}
-            textAnchor="middle"
-            fontSize={8.5}
-            className="fill-primary font-code uppercase tracking-wider"
-          >
-            running
-          </text>
-        )}
-        {isNext && (
-          <text
-            x={n.x}
-            y={n.y - NODE_H / 2 - 6}
-            textAnchor="middle"
-            fontSize={8.5}
-            className="fill-muted-foreground font-code uppercase tracking-wider"
-          >
-            next
-          </text>
-        )}
-      </g>
-    );
-  };
-
+  scenario,
+  looks,
+  fired,
+  done,
+}: {
+  scenario: ScenarioId;
+  looks: Record<string, NodeLook>;
+  fired: { from: string; to: string }[];
+  done: boolean;
+}) {
+  const def = SCENARIOS[scenario];
+  const byId = new Map(def.nodes.map((n) => [n.id, n]));
+  const firedSet = new Set(fired.map((r) => `${r.from}>${r.to}`));
   return (
-    <svg
-      viewBox="0 0 340 210"
-      className="h-auto w-full"
-      role="img"
-      aria-label={`Graph topology for ${def.graphName}`}
-    >
+    <svg viewBox="0 0 490 220" className="block h-auto w-full" role="img" aria-label={`The ${def.graph} graph`}>
       <defs>
-        <marker
-          id="rusty-arrow"
-          viewBox="0 0 10 10"
-          refX="9"
-          refY="5"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 1 L 9 5 L 0 9 z" className="fill-muted-foreground/60" />
+        <marker id="pg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="rgba(236,150,96,.5)" />
+        </marker>
+        <marker id="pg-arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill={C.accent} />
         </marker>
       </defs>
-      {def.edges.map(renderEdge)}
-      {def.nodes.map(renderNode)}
+      {def.edges.map((e) => {
+        const a = byId.get(e.from)!;
+        const b = byId.get(e.to)!;
+        const on = firedSet.has(`${e.from}>${e.to}`);
+        const g = edgeGeometry(a, b, e);
+        return (
+          <g key={`${e.from}>${e.to}`}>
+            <path
+              d={g.d}
+              fill="none"
+              stroke={on ? C.accent : "rgba(236,150,96,.3)"}
+              strokeWidth={on ? 2 : 1.3}
+              strokeDasharray={e.conditional ? "5 4" : undefined}
+              markerEnd={on ? "url(#pg-arrow-on)" : "url(#pg-arrow)"}
+              style={{ transition: "stroke .3s" }}
+            />
+            {e.label && (
+              <text x={g.lx} y={g.ly - 5} textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize={10} fill={on ? C.soft : C.dim}>
+                {e.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {def.nodes.map((n) => {
+        if (n.id === END) {
+          return (
+            <g key={n.id}>
+              <circle cx={n.x} cy={n.y} r={20} fill={done ? `${C.green}22` : "none"} stroke={done ? C.green : "rgba(236,150,96,.3)"} strokeDasharray="3 3" />
+              <text x={n.x} y={n.y + 4} textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize={10.5} fill={C.muted}>
+                END
+              </text>
+            </g>
+          );
+        }
+        const look = looks[n.id] ?? null;
+        const color = look ? LOOK_COLOR[look] : "rgba(236,150,96,.28)";
+        const w = width(n);
+        return (
+          <g key={n.id}>
+            {look === "running" && (
+              <rect x={n.x - w / 2 - 4} y={n.y - H / 2 - 4} width={w + 8} height={H + 8} rx={12} fill="none" stroke={C.accent} strokeOpacity={0.4} strokeWidth={4} className="pg-pulse" />
+            )}
+            <rect
+              x={n.x - w / 2}
+              y={n.y - H / 2}
+              width={w}
+              height={H}
+              rx={9}
+              fill={look && look !== "next" ? `${color}22` : "rgba(20,12,9,.92)"}
+              stroke={color}
+              strokeWidth={look ? 1.6 : 1}
+              strokeDasharray={look === "next" ? "4 3" : undefined}
+              style={{ transition: "all .3s" }}
+            />
+            <text x={n.x} y={n.y + 4.5} textAnchor="middle" fontFamily="IBM Plex Mono, monospace" fontSize={12} fill={look && look !== "discarded" && look !== "aborted" ? C.ink : "#b8b0a8"}>
+              {n.id}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }

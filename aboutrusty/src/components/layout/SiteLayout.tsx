@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from "react-router";
+import { RouteMeta } from "./RouteMeta";
 
 const navItems = [
   { to: "/", label: "Product", end: true },
@@ -70,6 +71,7 @@ const footerColumns: {
 export function SiteLayout() {
   return (
     <div className="flex min-h-screen flex-col">
+      <RouteMeta />
       <header
         className="sticky top-0 z-50 border-b"
         style={{

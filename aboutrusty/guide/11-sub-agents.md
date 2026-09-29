@@ -6,59 +6,72 @@ title: 11 · Sub-agents & delegation
 
 # Sub-agents & delegation
 
-One agent is a runtimes-and-state problem. Several agents working together is a *coordination* problem, and it's where multi-agent frameworks earn their reputation for fragility: the orchestrator calls a sub-agent, the sub-agent crashes mid-task, the result comes back twice or never, and the evidence trail is three disconnected log streams. This chapter is about Rusty's alternative — coordination as typed contracts over the primitives you already know, with a single causal evidence tree underneath.
+One agent is a state and runtime problem. Several agents working together is a coordination problem, and it is where multi-agent systems usually break. The orchestrator calls a sub-agent, the sub-agent crashes mid-task, the result arrives twice or never, and the evidence is spread across several unrelated logs. This chapter shows how Rusty handles coordination: typed contracts built on the durable task queue, with one causal evidence tree for the whole team.
 
 ## The concept: what coordination needs
 
-The field's multi-agent patterns are well-worn: an orchestrator delegates to workers; a task fans out over items and merges results; redundant candidates race and the first good answer wins; a quorum votes. Frameworks implement these as prompt-level conventions — the orchestrator's instructions say "you may ask the researcher," and the wiring is application code.
+The common multi-agent patterns are well known. An orchestrator delegates to a worker. A task fans out over items and merges the results. Several candidates race and the first good answer wins. A group votes. Most frameworks implement these as prompt conventions ("you may ask the researcher") plus application code for the wiring.
 
-What's missing at that level is everything Chapter 08 built: identity (which exact agent, at which manifest version), confinement (what is the delegate allowed to see), correlation (which result answers which ask), crash semantics (what happens when a member dies mid-pattern), and evidence (one account of the whole coordination, not N partial ones). The Agent Fabric's answer is that these are runtime guarantees or they are nothing — so four patterns ship as typed contracts in `rusty-core/src/agents.rs`, each a thin composition over mailbox submission through the transactional outbox.
+That leaves out what Chapter 08 built for single agents: identity (which agent, at which manifest version), confinement (what the delegate may see), correlation (which result answers which request), crash behavior (what happens when a member dies mid-pattern), and evidence (one account of the coordination). R0.7's Agent Fabric makes these runtime guarantees. Four patterns ship as typed contracts in `rusty-core/src/agents.rs` (`CoordinationContract`, tagged `pattern`: `delegate`, `fan_out`, `race`, `quorum`), and the server drives them in `rusty-server/src/coordination.rs`. You submit one with `POST /coordination/{delegate|fan_out|race|quorum}` and read it with `GET /coordination/{id}`.
 
 ## One connected tree
 
-Before the patterns, two shared rules, because they're what make the evidence coherent.
+Two rules make the evidence coherent before any pattern runs.
 
-**Event ids stitch the forest.** Event ids are globally unique (`{run_id}:{seq}`) and every task envelope carries a `parent` — the event that created it. When agent A delegates to agent B, B's spawn and first `MailboxReceive` record their parent as the event in A's journal that sent the message. Journals stay per-run and unchanged; the team's evidence is a forest stitched by parent ids, assembled at read time into a `TeamTrace`. The invariant the release proof checks: from any event in any member's journal, walking `parent` reaches the team's root spawn.
+**Each coordination has its own journal.** The server opens a journal for the coordination and records the whole skeleton there: `CoordinationStart`, one `MailboxSend` per member, a `MailboxReceive` when each member's task settles, and `CoordinationEnd` with the result. Event ids are globally unique (`{run_id}:{seq}`), and every member task carries a `parent` pointing at the `MailboxSend` event that created it. Journals stay per-run. At read time `TeamTrace::assemble` (`rusty-core/src/team_trace.rs`) stitches the coordination journal and the members' journals into one tree with exactly one root, the `CoordinationStart` event. `GET /coordination/{id}/trace` serves it.
 
-**Patterns submit through the outbox.** A pattern submitting N tasks must not crash between checkpoint and submission — that's the split-brain the outbox kills (Chapter 10). A pattern's task set and the run state that spawned it are one durable unit.
+**Patterns submit through the outbox.** Each driver pass ends in `ServerStore::journal_and_enqueue`, which commits the new journal events and the member tasks' outbox rows as one unit. Member task ids (`{tenant}--{cid}--{member}`) and idempotency keys (`coordination:{cid}:{member}`) are derived from the coordination id, not minted. A retried submission converges on the same tasks instead of creating duplicates, and a crash between passes is repaired by the next pass rescanning the journal.
 
 ## The four patterns
 
-**Delegate / handoff.** A typed ask: target agent (identity plus *pinned manifest version* — the delegate you asked is the delegate that answers, even across a redeploy), an input payload, an `ArtifactContract` for the result, and a **scoped context transfer** declaring which scopes and channels the delegate may see. Confinement is structural: the transfer is the agent manifest's declared scopes *intersected* with the grant — the grant can only narrow, the same rule Cedar overlays follow in Chapter 07. The result returns to the delegator's mailbox as a typed message correlated by the delegation's task id; the application never correlates callbacks by hand. *Handoff* is delegation plus a terminal mark — the delegator ends its turn-set and the delegate becomes the causal continuation, journaled as such. If the delegate crashes mid-pattern, its turn returns to visibility at lease expiry and is re-delivered to the re-activated delegate, idempotency key intact; the whole-task deadline bounds the wait, and expiry surfaces as a cancellation, not a hang.
+**Delegate.** A typed request to one agent. You name the target agent and its `manifest_version`; the server refuses the submission if the registered manifest does not match, so the delegate you asked for is the one that answers, even across a redeploy. You pass an input payload, an optional `result_contract` (an `ArtifactContract`, carried on the wire but not yet enforced), and an optional `ContextGrant` of scopes and channels. The grant must narrow what the delegate's manifest already declares; a grant that widens it is rejected with `400`. The contract also has a `handoff` flag, but the server does not act on it yet.
 
-**Fan-out / map.** N delegations over a list of items with a declared parallelism bound — the cross-agent form of what `Route::Send` is inside a graph. The runtime enforces at most `k` delegations in flight, and the merge is deterministic: results keyed by delegation task id, merged in sorted-id order — the same canonicalization the barrier applies to concurrent writes, applied to mailbox results. Equal inputs and equal member behavior produce byte-equal merged outputs. If a member dead-letters, the declared `on_member_failure` policy decides: `fail_fast` cancels the rest through the cancellation tree; `partial` merges what completed with the missing member *journaled as missing* — never silently absent. There is no third, implicit option.
+If the delegate crashes, its lease lapses and the task is re-delivered on the next claim with the same idempotency key. The task deadline bounds the wait, and expiry settles the coordination as `cancelled` instead of hanging.
 
-**Race.** N candidates over equivalent agents; the first *successful* completion wins, and the runtime cancels the rest. The contract refuses, at submission, any candidate whose declared effect is not freely repeatable — cancelling losers is only sound if losing is undoable. An unsound race *cannot be declared*; the effect gate is a submission rule. And the losers' settlements are journaled with their spent cost, because wasted cost is a decision input. Honesty about waste is the price of offering races at all.
+**Fan-out.** N delegations over a list of items, with at most `max_in_flight` running at once. This is the cross-agent form of `Route::Send` inside a graph. The merge is deterministic: results are keyed by member task id and merged in sorted-id order (`merge_fan_out`), so the same inputs and member outputs produce the same merged output. `on_member_failure` decides what a failure does:
 
-**Quorum.** N delegations, a declared threshold `k` over an explicit, named membership — the list is part of the contract, so "who voted" is never ambiguous — and a deterministic resolver (majority-equal, first-k, or an application-supplied pure function) applied to the accepted outputs in sorted order. Deterministic is a hard requirement: the resolver is `Effect::Pure` code the runtime re-executes during replay, so a quorum's recorded decision reproduces exactly. If failures drop membership below `k`, the quorum fails *open* — journaled as unreachable, surfaced to the caller, never silently downgraded to a smaller `k`.
+- `fail_fast`: a `failed` or dead-lettered member cancels the rest.
+- `partial`: completed results are merged and the missing member is recorded as missing.
+
+**Race.** N candidates over equivalent agents. The first member to complete wins, and the rest are cancelled. Cancelling losers is only safe if their work can be repeated or discarded, so submission refuses any candidate whose declared effect is not freely repeatable (`RaceEffectNotFreelyRepeatable`, `400`). The losers' spend is recorded as `wasted_tokens` and `wasted_cost_usd`, so you can see what the race cost. If every candidate fails, the outcome is dead-lettered.
+
+**Quorum.** N delegations over an explicit, named membership with a `threshold`. The first `threshold` completions are accepted, and a resolver runs over their outputs in task-id order. Two resolvers work today: `majority_equal` and `first_k`. A `custom` resolver has a wire shape but is refused at submission (`CustomResolverUnsupported`). The resolver is a pure function (`resolve_quorum`), and its decision is recorded in the journal. If failures push the reachable membership below the threshold, the quorum settles `unreachable`; it never lowers the threshold. A quorum with no majority still completes, with `decided: false`.
 
 ```mermaid
 flowchart TB
-    subgraph delegator["Agent A — delegator"]
-        CS["CoordinationStart"]
+    subgraph cj["Coordination journal"]
+        CS["CoordinationStart"] --> SB["MailboxSend → B"]
+        CS --> SC["MailboxSend → C"]
+        CS --> SD["MailboxSend → D"]
+        RB["MailboxReceive (B settled)"]
+        RC["MailboxReceive (C settled)"]
+        RD["MailboxReceive (D failed)"]
+        CE["CoordinationEnd<br><small>merge / winner / resolver output</small>"]
     end
-    CS -->|"outbox: MailboxSend, parent-linked"| B["Agent B"]
-    CS -->|"outbox: MailboxSend, parent-linked"| C["Agent C"]
-    CS -->|"outbox: MailboxSend, parent-linked"| D["Agent D"]
-    B --> R["result → A's mailbox<br><small>correlated by task id</small>"]
-    C --> R
-    D -->|"dead-letters"| X["journaled as missing<br><small>or fail_fast cancels the rest</small>"]
-    R --> CE["CoordinationEnd<br><small>deterministic merge / resolver output</small>"]
+    SB -->|"outbox: task, parent = send event"| B["Agent B"] --> RB
+    SC -->|"outbox"| C["Agent C"] --> RC
+    SD -->|"outbox"| D["Agent D"] --> RD
+    RB --> CE
+    RC --> CE
+    RD -->|"partial: recorded as missing<br>fail_fast: cancels the rest"| CE
+    CE -->|"one coordination_result message"| A["Agent A's mailbox"]
 ```
 
-Every pattern journals the same skeleton: `CoordinationStart` in the delegator, the `MailboxSend`/`MailboxReceive` pairs, the members' turn sets under that parentage, and `CoordinationEnd` carrying the result. An auditor reconstructs the vote; a replay reproduces the merge; a post-mortem walks parent ids from any member back to the root.
+When the coordination ends, the server sends one `coordination_result` message to the delegator's mailbox, carrying the `CoordinationOutcome` keyed by coordination id. The delegator's manifest must declare that message kind, or the submission is rejected. With the whole skeleton in one journal, an auditor can reconstruct a vote, a replay reproduces the merge, and a post-mortem can walk parent ids from any member back to the root.
 
 ::: tip Key takeaways
-- Four coordination patterns — delegate/handoff, fan-out/map, race, quorum — ship as typed contracts, not prompt conventions.
-- The causal tree needs no super-journal: parent ids stitch per-run journals into one team trace at read time.
-- Confinement is structural: scoped context transfers can only narrow what a delegate sees.
-- Determinism is enforced where it matters — sorted-id merges and pure resolvers — so coordination decisions replay exactly.
-- Unsound patterns are refused at declaration: races require repeatable effects, quorums never silently shrink.
+- Four patterns ship as typed contracts: delegate, fan-out, race, quorum. You submit them over `POST /coordination/...`.
+- Each coordination journals its own skeleton; `TeamTrace` stitches it and the members' journals into one tree at read time.
+- Member task ids and idempotency keys are derived, and each pass commits journal and outbox together, so crashes converge instead of duplicating.
+- Context grants can only narrow a delegate's declared scopes; widening is rejected.
+- Merges and resolvers are deterministic. Races require repeatable effects, and quorums never lower their threshold.
+- Not yet enforced: `handoff`, `result_contract` validation, custom quorum resolvers.
 :::
 
 **Further reading**
 
 - [docs/agent-fabric-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/agent-fabric-design.md) — the coordination contracts and their crash semantics
 - [rusty-core/src/agents.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/agents.rs) — the typed pattern contracts
+- [rusty-server/src/coordination.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-server/src/coordination.rs) — the driver
 - [Chapter 08 · Blueprints & agents](./08-blueprints-agents.md) — identity, manifests, and mailboxes underneath
 - [Chapter 10 · Durability](./10-durability.md) — the queue and outbox the patterns compose

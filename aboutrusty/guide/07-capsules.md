@@ -6,77 +6,86 @@ title: 07 · Capsules
 
 # Capsules
 
-Sooner or later someone asks your agent platform to run code you didn't write: a community tool, a tenant's custom node, an MCP server of unknown provenance. The framework answer is a subprocess and a prayer. This chapter is about doing it properly — the capsule rule: **no code the runtime does not trust may reach the filesystem, the network, a secret, the clock, a model, or another tool unless its manifest declared that reach, a policy permitted it, and the grant can be shown afterward.** Every capability use, and every denied attempt, is journaled with causal parentage and attributable to the exact manifest grant that allowed or refused it.
+Eventually your platform has to run code you did not write: a community tool, a tenant's custom node, an MCP server of unknown origin. Running it as a subprocess gives it everything the process can reach. Capsules, shipped in R0.9 (platform v0.10), are Rusty's answer. The rule from [docs/capsules-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/capsules-design.md): code the runtime does not trust may reach the filesystem, the network, a secret, the clock, a model, or another tool only if its manifest declared that reach, a policy permitted it, and the grant can be shown afterward. Every capability use and every denied attempt is journaled and attributed to the manifest grant that allowed or refused it.
 
 ## The concept: isolation is a spectrum, and the middle was missing
 
-The field offers two classic answers. **MicroVMs** (Firecracker, E2B) isolate by machine boundary — right for hostile multi-tenant *processes*, but the cold start is hundreds of milliseconds and the boundary crosses an entire kernel when the untrusted unit is usually a single node invocation. **In-process sandboxes** are cheap but historically ambient: the guest shares the host's filesystem, network, and environment, and the permission model lives in deployment config the code can't see.
+Two isolation approaches are common. **MicroVMs** (Firecracker, E2B) isolate at the machine boundary. They suit hostile multi-tenant processes, but cold starts cost hundreds of milliseconds and the boundary is a whole kernel, while the untrusted unit is often a single node invocation. **In-process sandboxes** are cheap, but the guest traditionally inherits the host's filesystem, network, and environment, and the permission model lives in deployment config the code cannot see.
 
-The interesting lineage is the one that closes the middle:
+The design draws on five ideas that fill the middle:
 
-- **Object capabilities** (Mark Miller's E work and its successors): authority as unforgeable references. A component never handed the secret-store capability cannot reach secrets no matter what it asks, because there is no ambient name to ask for. Deny-by-default stops being a policy stance and becomes a structural fact.
-- **The WASM Component Model and WASI**: a component's WIT *world* declares exactly the imports it receives; the host chooses what to link. An import that doesn't exist is not a permission checked and refused — it's a door that was never built.
-- **Wasmtime's resource governance**: fuel metering is a deterministic CPU budget, epoch interruption preempts a guest that stops yielding, `ResourceLimiter` caps memory.
-- **Deno's permission model**: `--allow-net=api.example.com`-style grants demonstrate that host/protocol/method scoping is the right granularity, and that the grant must be declared by the party running the code, not the code itself.
-- **Cedar**: policy-as-data authorization with a formal semantics — so "can this tenant overlay ever widen a grant?" is a verification question, not a code-review question.
+- **Object capabilities** (Mark Miller's E language and its successors): authority is an unforgeable reference. A component that was never handed the secret-store capability cannot reach secrets, because there is nothing to name. Deny-by-default becomes a structural fact.
+- **The WASM Component Model and WASI**: a component's WIT world declares the imports it needs, and the host decides what to link. An import that is not linked does not exist.
+- **Wasmtime resource controls**: fuel is a deterministic CPU budget, epoch interruption preempts a guest that stops yielding, and `ResourceLimiter` caps memory.
+- **Deno's permissions**: grants scoped to host, protocol, and method, declared by whoever runs the code, not by the code.
+- **Cedar**: authorization policy as data with formal semantics.
 
-Framework-level isolation loses three things, and the capsules design names them: authority is ambient, denial is silent (a refusal is a log line, if anything), and budgets are advisory (enforced outside the execution record, so a run that burned 40 seconds inside a 30-second budget leaves evidence of the 40, not of the bound that should have stopped it).
+The design lists what framework-level isolation loses. Authority is ambient. Denials are silent, a log line at best. Budgets are advisory, enforced outside the execution record, so a run that used 40 seconds of a 30-second budget leaves evidence of the 40 and none of the bound.
 
 ## Rusty: the manifest declares, the host enforces
 
-A capsule is declared before any code runs, as a content-addressed `CapsuleManifest` (`rusty-core/src/capsule.rs`) — golden-pinned, additive-evolution only, the same contract discipline as memory records and candidates. `CapsuleId` is the SHA-256 of the manifest's canonical serialization: identity is integrity. The load-bearing fields:
+A capsule is declared before any code runs, as a `CapsuleManifest` (`rusty-core/src/capsule.rs`). The manifest is golden-pinned and evolves only by addition. `CapsuleId` is the SHA-256 of its canonical serialization, so a tampered manifest no longer matches its id. The fields that matter:
 
-- **`build_digest`** — SHA-256 of the guest `.wasm` bytes. Admission recomputes it; a manifest naming bytes it wasn't built from does not load.
-- **`interface`** — the WIT world reference the component was built against. World versions are additive; old worlds keep instantiating.
-- **`effects`** — the closed `Effect` classes the capsule may produce, reserved as the taxonomy's consumer since R0.5. A capsule whose declared classes top out at `ReadOnly` is refused at admission if its requested grants imply writes; the host enforces the stricter of the two.
-- **`capabilities`** — a closed set of grants: `filesystem` (path prefixes, read or read-write), `network` (hostnames, protocols, HTTP methods), `secret` (handles, not bytes), `tool` (names in the run's `ToolRegistry`), `model` (names the deployment serves). The set is the whole reach; the default is empty, which describes a pure-compute guest — exactly what the existing `WasmNode` ABI already runs, so nothing regresses.
-- **`budget`** — fuel, memory, wall time, max tokens, max cost, max output bytes. `None` means the enclosing scope's budget applies, never an invented default.
+- **`build_digest`**: the SHA-256 of the guest `.wasm` bytes. Admission recomputes it, and a manifest that names bytes it was not built from does not load.
+- **`interface`**: the WIT world it was built against. R0.9 supports one, `rusty:capsule/world@0.1.0`.
+- **`effects`**: the `Effect` classes the capsule may produce. Each grant implies a minimum class (`CapabilityGrant::implied_effect`): a read-only filesystem grant or GET-only network grant implies `ReadOnly`, while read-write filesystem, write methods, tool, and model grants imply `NonIdempotent`. A manifest that declares less than its grants imply is refused.
+- **`capabilities`**: a closed set of `CapabilityGrant`s. `Filesystem` (path prefixes, read or read-write), `Network` (hosts, protocols, HTTP methods), `Secret` (handles, never bytes), `Tool` (names in the run's `ToolRegistry`), `Model` (names the deployment serves), and `Clock`. The set is the entire reach. The default is empty, a pure-compute guest.
+- **`budget`**: a `ResourceBudget` of fuel, memory, wall time, tokens, cost, and output bytes. `None` on a field means the enclosing scope's bound applies.
 
-Manifest signing is deliberately deferred — the digest proves integrity against the registry, not provenance against an author. R0.9's signing budget went to run receipts instead, because receipts cover manifest digests transitively. The book flags this as designed-but-later, as the design does.
+The manifest is not signed. Its digest proves integrity against the registry, not who wrote it. The design deferred manifest signing and spent R0.9's signing work on run receipts, which cover the resolved capsule ids.
 
 ## The capability host: denial you can show
 
-The host (`rusty-core/src/capsule_host.rs`, feature `wasm`) upgrades the sandbox from "no imports at all" to "imports that exist only when granted" — the strictly harder problem the Component Model exists for. `WasmNode` stays untouched beside it; there's no forced migration.
+The host is `rusty-core/src/capsule_host.rs`, behind the `wasm` feature. The older `WasmNode` (`rusty-core/src/wasm_node.rs`) runs pure-compute guests with no imports at all and stays as the fast path. The capability host runs Component Model guests whose imports exist only when granted. Nothing had to migrate.
 
 ```mermaid
 flowchart TB
-    M["CapsuleManifest<br><small>declared capabilities + budgets</small>"] --> AD{"Admission<br><small>recompute build digest ·<br>clamp budgets to scope ·<br>Cedar policy check</small>"}
-    AD -->|"refused"| DENY["journaled denial"]
-    AD -->|"admitted"| HOST["Capability host<br><small>links only granted imports</small>"]
-    GUEST["guest .wasm component"] --> HOST
-    HOST -->|"ungranted import probe"| DENY2["CapsuleDenied event:<br>capsule, capability,<br>absent grant"]
-    HOST -->|"granted use, in scope"| USE["journaled effect<br>with causal parentage"]
+    M["CapsuleManifest<br>grants + budget"] --> AD{"Admission<br>recompute build_digest<br>clamp budget<br>Cedar grant checks"}
+    AD -->|"refused"| DENY["typed refusal"]
+    AD -->|"admitted"| HOST["Capability host<br>links only granted imports"]
+    GUEST["guest component"] --> HOST
+    HOST -->|"import with no grant"| D1["CapsuleDenied<br>structural, never linked"]
+    HOST -->|"granted import, out of scope"| D2["CapsuleDenied<br>names the missing scope"]
+    HOST -->|"granted import, in scope"| USE["CapsuleCall<br>journaled with parent"]
 ```
 
-Three enforcement properties deserve emphasis.
+**Structural denial.** Before instantiation, the host walks the component's import list. An import whose capability has no grant is never linked, and the invocation is refused with a journaled `CapsuleDenied`. A component built without the network import cannot reach the network even in-process: there is no symbol to call. The R0.9 world is narrow and the CHANGELOG says so. It links two imports, `rusty:capsule/net@0.1.0` (`fetch`) and `rusty:capsule/clock@0.1.0` (`now-millis`). Filesystem, tool, and model grants are defined in the manifest contract and have no linked import yet, so a guest that imports them fails closed.
 
-**Structural denial.** A component built without the `secret-store` import cannot reach secrets even in-process: no symbol to call, no handle to forge. Grants narrower than the world — a `network` grant naming one hostname — are enforced inside the host's import implementation, matching host, protocol, and method before any socket opens.
+**Scoped denial.** A grant can be narrower than the import. A `Network` grant for one host links `fetch`, and the host's import implementation checks host, protocol, and method against the grant before opening a socket. A mismatch is refused and journaled as `CapsuleDenied` with an `absent_grant` naming the missing scope. The module docs are explicit that this is a runtime check, evaluated when the attempt arrives. Revocation is checked the same way: through the `GrantRecheck` seam, each granted import re-authorizes at its next use.
 
-**Denials are evidence.** A denied attempt journals `CapsuleDenied`, naming the capsule id, the requested capability, and *the manifest grant that was absent* — attributable to a declaration, not a stack trace. Every runtime claims deny-by-default; in Rusty the claim is checkable, because the evidence plane predates the isolation plane. The release proof is a denial you can show, not a denial you can assert.
+**Budgets.** Fuel is the CPU budget and is deterministic, so it replays the same way. Epoch interruption enforces wall time: a ticker advances the engine epoch every 5 ms (`EPOCH_TICK_MS`), and a guest that stops yielding is preempted. `ResourceLimiter` carries the memory cap. At admission, the budget is clamped field by field to the minimum of what the manifest declares and what the enclosing run allows (`ResourceBudget::clamp`), and the clamp is journaled. A breach aborts the invocation and records which budget was hit when that can be attributed confidently: fuel and wall time can, memory and other traps are reported unattributed.
 
-**Budgets compose downward.** Fuel is the CPU budget (deterministic, replay-stable), epoch interruption enforces wall time, the memory cap carries over. A capsule's declared budget is clamped at admission to the *minimum* of what the manifest declares and what the enclosing run, tenant quota, and pool permit — and a breach terminates the invocation and journals which budget bit. A budget that cannot be shown in evidence is advisory; these are not.
+**Secrets.** A guest never holds credential bytes. Since R0.11, `BrokeredCapsuleHost` (`rusty-core/src/broker.rs`) turns a manifest's `Secret` grants into broker-issued handle tokens delivered in the guest's input. The credential is resolved on the host side at the moment of use, so a granted call can be authenticated while the guest holds only an opaque token.
 
-Secrets deserve a sentence of their own: a `secret` grant hands the guest an opaque handle — no bytes, redacted in `Debug`, never in guest linear memory. The host resolves handle to secret at the moment of use, inside the host-side connector, so a granted HTTP call can be authenticated without the guest ever holding the credential.
+The release proof is `rusty-server/tests/capsules_release.rs`. An untrusted capsule arrives through the A2A bridge as a durable node, with a manifest granting exactly one network host and no filesystem. The granted fetch succeeds and is journaled. A fetch to another host is denied, and the filesystem import does not exist. Both denials are journaled into the invoking run, each naming the absent grant. The run's signed receipt verifies and covers both denials, and tampering with a journaled denial fails verification, naming the journal head. The test only compiles with the `capsules` feature.
 
 ## Cedar, and signed run receipts
 
-Authorization policy is Cedar (`rusty-server/src/capsule_policy.rs`, feature `capsules`): capsule admission, grant checks, and tenant overlays that can only narrow. Cedar's analysis tooling is the credible path to proving an overlay can't widen — stated as intent where the tooling is still moving.
+Authorization is Cedar, in `rusty-server/src/capsule_policy.rs` behind the server's `capsules` feature. A server built without the feature refuses the capsule policy surface with a typed error. Cedar decides three questions. May this tenant load this capsule at all, checked at `POST /capsules` and again at `POST /capsules/resolve`? Does policy permit each declared grant (one Cedar request per grant, and any denial refuses admission)? May this author attach this overlay? The narrowing itself is not Cedar's job. The effective grant set is the intersection of manifest and overlay (`intersect_grants` in `rusty-core/src/capsule.rs`), a set operation that cannot add a grant. Policies are operator-authored `.cedar` text, stored as immutable versions with one active pointer per tenant, moved only by `POST /capsule_policies/active`. The active version is pinned into every admission event.
 
-The receipt (`rusty-core/src/receipt.rs`) is the release's signing spend: an Ed25519-signed statement over evidence that already exists — the journal head hash (signing the head signs every event transitively), the run manifest digests, the effect-receipts ledger, the policy versions, and the *denials ledger*, so a receipt over a run that attempted forbidden access says so. v1 key management is honestly scoped: one keypair per server deployment, generated on first boot — local signing with local keys, proving integrity and origin against a key the operator holds, no more. KMS, remote attestation, and transparency-log witnessing are R1.0+; the receipt's canonical form is exactly the byte string a transparency log would witness later. And the design is plain about what a receipt does *not* prove: nothing about whether an external model told the truth or a remote agent kept its word — a signature over Rusty's evidence cannot witness systems whose journals Rusty doesn't hold.
+A run receipt (`rusty-core/src/receipt.rs`) is an Ed25519 signature over evidence the Flight Recorder already holds:
 
-Finally, the bridges: R0.9 also ships MCP server and client bridges and A2A server and client, with streaming and cancellation preserved in all four directions — a graph exposed as an MCP tool runs under its declared manifest and budget, and an outbound MCP call is a journaled, idempotency-keyed effect. The ecosystem's ambient-authority posture isn't Rusty's to fix; Rusty's own exposure, in both directions, is governed. Chapter 09 picks up the connector story from there.
+- the run id and the journal head (`JournalRef`); signing the head covers every event in the chain
+- the run manifest and its digest, plus the resolved capsule ids
+- the effect ledger: one digest per journaled `EffectReceipt`
+- the executor policy version and the Cedar policy versions capsules were admitted under
+- the denials ledger: the ids of every `CapsuleDenied` event, so a receipt for a run that attempted forbidden access says so
+
+The server exposes `GET /runs/{id}/receipt` and `POST /receipts/verify`. `verify_receipt` recomputes the journal head with the journal's own chain step and returns a typed `ReceiptRejection` naming the component that failed. Keys are scoped plainly: one Ed25519 keypair per deployment, stored as a `0600` file under `{store_path}/keys/`, with only the public half in the store. Key genesis and rotation are journaled (`SigningKeyRotated`), and old receipts verify against the key history. A receipt proves integrity and origin against a key the operator holds. It gives no non-repudiation against that operator and no remote attestation. KMS, transparency-log witnessing, and attestation are planned for R1.0 and later, and `RunReceipt::canonical_bytes` is the exact byte string a log would witness. A receipt also cannot vouch for an external model's answer or a remote agent's claims; it covers only what this runtime received, authorized, and executed.
+
+R0.9 also shipped protocol bridges in four directions. As an MCP server, Rusty exposes a registered assistant as a tool whose calls submit background runs, and a client disconnect cancels the run. As an MCP client, calls are journaled with derived idempotency keys, and replay serves the recorded response without starting the stdio server. As an A2A server, inbound tasks become durable tasks. As an A2A client, remote agents are durable nodes journaled as effects. [Chapter 09](./09-tools-connectors.md) continues with tools and connectors.
 
 ::: tip Key takeaways
-- Capsules bound the guest; they are not plugins that extend the host. Declaration precedes execution, and the manifest is content-addressed.
-- Denial is structural — unlinked imports, not runtime checks — and journaled: `CapsuleDenied` names the absent grant.
-- Budgets clamp to the strictest enclosing scope and breaches are evidence, not log lines.
-- Receipts sign the journal head, manifest digests, effect ledger, policy versions, and denials — local keys for now, transparency-log-ready by construction.
-- What a receipt can't prove is stated: Rusty's own conduct only, never third-party systems'.
+- A capsule's reach is declared in a content-addressed manifest before it runs, and the manifest's effects must cover what its grants imply.
+- An ungranted import is never linked. A granted import out of scope is refused at use. Both journal `CapsuleDenied` naming the absent grant.
+- The R0.9 world links only `net.fetch` and `clock.now-millis`; other grant kinds are contract-only so far.
+- Budgets are clamped to the enclosing run at admission, and breaches are journaled.
+- Cedar decides legality, set intersection does the narrowing, and receipts sign the journal head, manifests, effects, policy versions, and denials with a local key.
 :::
 
 **Further reading**
 
-- [docs/capsules-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/capsules-design.md) — the full R0.9 design, lineage and open questions included
-- [rusty-core/src/capsule.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/capsule.rs) and [capsule_host.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/capsule_host.rs) — manifest and host
-- [rusty-core/src/receipt.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/receipt.rs) — `RunReceipt` and the verification API
-- [rusty-core/src/wasm_node.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/wasm_node.rs) — the pure-compute sandbox capsules build beside
+- [docs/capsules-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/capsules-design.md): the R0.9 design, lineage, and open questions
+- [rusty-core/src/capsule.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/capsule.rs) and [rusty-core/src/capsule_host.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/capsule_host.rs): manifest and host
+- [rusty-core/src/receipt.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/receipt.rs): `RunReceipt` and `verify_receipt`
+- [rusty-server/tests/capsules_release.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-server/tests/capsules_release.rs): the R0.9 release proof

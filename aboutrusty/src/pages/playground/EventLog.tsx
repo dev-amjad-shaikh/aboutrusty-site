@@ -1,150 +1,88 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Terminal } from "lucide-react";
 import type { SimFrame } from "./engine";
-import { StatusDot } from "./chrome";
+import { Dot, Label } from "./chrome";
+import { C } from "./tokens";
 
-interface EventLogProps {
-  frames: SimFrame[];
-  threadId: string;
-  /** 2× speed switches autoscroll to instant ("auto") to avoid jitter. */
-  speed: 1 | 2;
-  /** True while the thread is running — the title-bar dot breathes green. */
-  streaming?: boolean;
-}
-
-const FRAME_COLORS: Record<SimFrame["event"], string> = {
-  metadata: "text-white/40",
-  updates: "text-amber-300",
-  values: "text-orange-300",
-  end: "text-[#ffc7a6]", // light rust — readable on the charcoal surface
+const EVENT_COLOR: Record<SimFrame["event"], string> = {
+  metadata: C.dim,
+  updates: C.amber,
+  values: C.soft,
+  error: C.red,
+  end: C.green,
 };
 
-const TRUNCATE_AT = 140;
-
-/**
- * `values` frames repeat the entire channel state every super-step — truncate
- * the payload with a "+ expand" toggle so `updates` frames stay visible.
- */
-function FramePayload({ frame }: { frame: SimFrame }) {
-  const [expanded, setExpanded] = useState(false);
-  const json = JSON.stringify(frame.data);
-  if (frame.event !== "values" || json.length <= TRUNCATE_AT) {
-    return <>{json}</>;
-  }
+function Payload({ data }: { data: unknown }) {
+  const [open, setOpen] = useState(false);
+  const json = JSON.stringify(data);
+  if (json.length <= 150) return <>{json}</>;
   return (
     <>
-      {expanded ? json : `${json.slice(0, TRUNCATE_AT)}…`}
+      {open ? json : `${json.slice(0, 150)}…`}
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="ml-1.5 font-code text-[10px] text-white/40 hover:text-white/70"
+        onClick={() => setOpen((v) => !v)}
+        className="ml-2 cursor-pointer border-0 bg-transparent p-0 font-code text-[11px] text-[#8b837b] hover:text-[#ffc7a6]"
       >
-        {expanded ? "– collapse" : "+ expand"}
+        {open ? "less" : "more"}
       </button>
     </>
   );
 }
 
 /**
- * The SSE stream, rendered like a terminal: metadata → updates → values →
- * end frames, each carrying the {checkpoint_id}:{step}:{seq} frame id that
- * Last-Event-ID reconnects dedupe against. Autoscroll stays pinned to the
- * bottom until you scroll up — the ↓ latest button re-pins it.
+ * The frames POST /threads/{id}/runs/stream would send, with the
+ * default stream modes (values, updates). Each run opens its own stream, so
+ * seq restarts at 1 and ids use "-" until the run writes a checkpoint.
  */
-export function EventLog({ frames, threadId, speed, streaming = false }: EventLogProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const pinnedRef = useRef(true);
-  const [pinned, setPinned] = useState(true);
-
-  const handleScroll = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
-    pinnedRef.current = atBottom;
-    setPinned(atBottom);
-  };
+export function EventLog({ frames, threadId, live }: { frames: SimFrame[]; threadId: string; live: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
 
   useEffect(() => {
-    if (!pinnedRef.current) return;
-    endRef.current?.scrollIntoView({
-      behavior: speed === 2 ? "auto" : "smooth",
-      block: "end",
-    });
-  }, [frames.length, threadId, speed]);
-
-  const repin = () => {
-    pinnedRef.current = true;
-    setPinned(true);
-    endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  };
+    const el = box.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [frames.length, threadId]);
 
   return (
-    <div className="bg-code relative overflow-hidden rounded-lg border border-white/10 shadow-2xl">
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
-        <span className="flex items-center gap-2 font-code text-[10px] uppercase tracking-[0.14em] text-white/60">
-          <StatusDot
-            tone={streaming ? "success" : frames.length > 0 ? "rust" : "muted"}
-            pulse={streaming}
-          />
-          <Terminal size={13} />
-          runs/stream · thread {threadId}
+    <div className="flex min-w-0 flex-col gap-2">
+      <Label right={<span className="font-code text-[10.5px] text-[#8b837b]">{frames.length} frames</span>}>
+        <span className="inline-flex items-center gap-2">
+          <Dot color={live ? C.accent : frames.length ? C.green : C.dim} pulse={live} />
+          Event stream · thread {threadId}
         </span>
-        <span className="font-code text-[10px] uppercase tracking-[0.14em] text-white/40">
-          SSE
-        </span>
-      </div>
+      </Label>
       <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="h-80 overflow-y-auto p-4"
+        ref={box}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+        }}
+        className="h-72 overflow-y-auto rounded-xl border px-4 py-3"
+        style={{ borderColor: C.faint, background: "rgba(8,5,4,.75)" }}
       >
         {frames.length === 0 ? (
-          <p className="font-code text-xs text-white/40">
-            # No frames yet — the stream starts when you run.
-            <br />
-            # stream_mode: [updates, values]
-          </p>
+          <p className="m-0 font-code text-[12px] text-[#8b837b]">No frames yet. The stream opens when a run starts.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {frames.map((f, i) => (
-              // frameId embeds checkpoint+step; the index tiebreaker keeps the
-              // key unique across run attempts (the metadata frame is always
-              // "-:0:1", so attempt 2 legitimately repeats frameId+seq).
-              <div
-                key={`${threadId}-${f.frameId}-${f.seq}-${i}`}
-                className="font-code text-[11.5px] leading-relaxed"
-              >
+              <div key={i} className="font-code text-[11.5px] leading-[1.6]">
                 <div>
-                  <span className="text-white/35">event: </span>
-                  <span className={FRAME_COLORS[f.event]}>{f.event}</span>
+                  <span className="text-[#6f675f]">event: </span>
+                  <span style={{ color: EVENT_COLOR[f.event] }}>{f.event}</span>
                 </div>
                 <div>
-                  <span className="text-white/35">id: </span>
-                  <span className="text-white/60">{f.frameId}</span>
+                  <span className="text-[#6f675f]">id: </span>
+                  <span className="text-[#cbb3a2]">{f.id}</span>
                 </div>
-                <div className="break-all">
-                  <span className="text-white/35">data: </span>
-                  <span className="text-white/85">
-                    <FramePayload frame={f} />
-                  </span>
+                <div className="break-all text-[#cfc3b8]">
+                  <span className="text-[#6f675f]">data: </span>
+                  <Payload data={f.data} />
                 </div>
               </div>
             ))}
-            <div ref={endRef} />
           </div>
         )}
       </div>
-      {!pinned && frames.length > 0 && (
-        <button
-          type="button"
-          onClick={repin}
-          className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border border-white/10 bg-secondary px-2 py-1 font-code text-[10px] uppercase tracking-[0.08em] text-secondary-foreground shadow-md hover:bg-secondary/80"
-        >
-          <ArrowDown size={11} />
-          latest
-        </button>
-      )}
     </div>
   );
 }

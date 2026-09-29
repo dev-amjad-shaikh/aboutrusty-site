@@ -6,6 +6,13 @@ import { CrashTimeline, InterruptSequence } from "@/components/diagrams/LessonSe
 import { ReplayDiagram } from "@/components/diagrams/ReplayDiagram";
 import { CanaryDraw, ShadowFilter } from "@/components/diagrams/DeployDiagrams";
 import { SuperStepWidget } from "./widgets/SuperStepWidget";
+import { ReducerLab } from "@/components/diagrams/lessons-a/ReducerLab";
+import { RoutingLab } from "@/components/diagrams/lessons-a/RoutingLab";
+import { SendFanout } from "@/components/diagrams/lessons-a/SendFanout";
+import { JournalExplorer } from "@/components/diagrams/lessons-a/JournalExplorer";
+import { LeaseTimeline } from "@/components/diagrams/lessons-b/LeaseTimeline";
+import { CapsuleGrants } from "@/components/diagrams/lessons-b/CapsuleGrants";
+import { CowSnapshot } from "@/components/diagrams/lessons-b/CowSnapshot";
 
 /** Diagrams and interactives that lesson content can place by name. */
 export const LESSON_DIAGRAMS: Record<string, ComponentType> = {
@@ -19,4 +26,11 @@ export const LESSON_DIAGRAMS: Record<string, ComponentType> = {
   replay: ReplayDiagram,
   "canary-draw": CanaryDraw,
   "shadow-filter": ShadowFilter,
+  "reducer-lab": ReducerLab,
+  "routing-lab": RoutingLab,
+  "send-fanout": SendFanout,
+  "journal-explorer": JournalExplorer,
+  "lease-timeline": LeaseTimeline,
+  "capsule-grants": CapsuleGrants,
+  "cow-snapshot": CowSnapshot,
 };

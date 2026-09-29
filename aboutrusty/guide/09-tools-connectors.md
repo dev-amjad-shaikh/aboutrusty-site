@@ -6,53 +6,87 @@ title: 09 · Tools & connectors
 
 # Tools & connectors
 
-A tool call is the moment an agent stops talking and starts doing. The model emits JSON — `send_email`, arguments and all — and some piece of your system turns that string into a side effect in a system you may not own, with credentials you'd rather not think about. Everything about that gap is this chapter: how tools are declared and executed, and how connectors — packaged integrations with external systems — keep the dangerous parts declared, sealed, and evidenced.
+A tool call is where an agent stops talking and starts acting. The model emits JSON naming `send_email` and its arguments, and your system turns that string into a side effect in a system you may not own, using credentials you would rather keep away from the model. This chapter covers how tools are declared and executed, and how connectors, the packaged integrations with external APIs, keep the risky parts declared, sealed, and recorded.
 
 ## The concept: the tool-call gap
 
-Function calling looks trivial in the happy path, which is why the failure modes define the design space. A tool that throws shouldn't take the whole batch down with it. A model that asks for ten tool calls wants them in parallel but needs the results back in order. A tool that touches the filesystem has no business running in the same trust domain as one that reads engine state. And a credential configured against an integration must never echo back into a prompt, a journal, or a UI.
+Function calling looks simple on the happy path, so the failure cases define the design. A tool that throws should not abort the other calls in its batch. A model that asks for ten calls wants them run in parallel and the results returned in order. A tool that touches the filesystem should not run in the same trust domain as one that reads engine state. A credential configured for an integration must never appear in a prompt, a journal, or a UI.
 
-The field's answers are fragmented. Provider APIs (OpenAI's function calling and its peers) standardize the schema format but say nothing about execution. MCP — the Model Context Protocol — standardizes *discovery*: a server lists its tools, a client consumes them. But MCP's ecosystem posture is ambient authority: servers run as local processes with the user's full authority, or as remote endpoints trusted on the strength of a URL. Connector frameworks, meanwhile, tend to grow one bespoke code path per integration, which is how a hand-rolled `credentials.oauth` block once got past a "validated" connector — Rusty's connector standard exists because that bug was hit and the rule that fixes it was written down.
+The existing standards cover pieces. Provider function-calling APIs standardize the schema format and say nothing about execution. MCP, the Model Context Protocol, standardizes discovery: a server lists its tools and a client consumes them. MCP servers typically run as local processes with the user's full authority, or as remote endpoints trusted because of their URL. Connector frameworks tend to grow one code path per integration. The Rusty connector standard records how that went wrong once: a hand-rolled `credentials.oauth` block got past a connector that had been "validated", and the rule that prevents it is now written down.
 
 ## Rusty: the tool system
 
-The core is deliberately small (`rusty-core/src/tool.rs`). A `Tool` is an async callable with a JSON-Schema-described parameter surface. A `ToolRegistry` holds the tools an agent may see and emits OpenAI-format schemas for the chat API. `ToolExecutor::execute_batch` dispatches a batch of tool calls in parallel and returns one `role: "tool"` message per call, preserving call order — and isolating failure: a failing or even *panicking* tool becomes an `ERROR:` tool message in its own slot, data the model can read and recover from, never a batch abort.
+The core is small (`rusty-core/src/tool.rs`). A `Tool` is an async callable with a JSON-Schema parameter surface. A `ToolRegistry` holds the tools an agent can see and emits OpenAI-format schemas for the chat API. `ToolExecutor::execute_batch` runs a batch of tool calls in parallel and returns one `role: "tool"` message per call, in call order. A tool that returns an error, or panics, becomes an `ERROR:` tool message in its own slot. The panic is caught, the other calls complete, and the model can read the error and recover.
 
-Two classifications ride on every tool, and they answer different questions. `Effect` (Chapter 03's taxonomy) classifies retry safety — what may happen *again*. `EffectClass` classifies placement — *where* the tool runs: `Read` tools read engine state and may execute in-process; `Execute` tools run model-influenced code or touch the filesystem; `Egress` tools open network connections. Paired with a `SandboxRequirement` (`None` or `Required`), placement is a declaration the runtime enforces, with the sandbox backend reporting its enforcement level honestly rather than asserting it.
+Every tool carries two classifications that answer different questions:
 
-Tool calls journal like everything else: through the `RecordingTool` wrapper they're evidence with causal parentage, and under exact replay the `ReplayingTool` serves recorded results without ever invoking the real thing. A tool gate refusal — like Chapter 06's skill gate — returns as the tool's *result*, so even denials are replayable evidence rather than vanished log lines.
+- **`Effect`** ([Chapter 03](./03-journals.md)) answers what may safely happen again. The `Tool` trait's default is `NonIdempotent`.
+- **`EffectClass`** answers where the tool runs. `Read` tools read engine state and may run in-process. `Execute` tools run model-influenced code or touch the host filesystem. `Egress` tools open network connections. Each tool also declares a `SandboxRequirement`, `None` or `Required`. Registering an `Execute` or `Egress` tool with `SandboxRequirement::None` panics at registration, so an unsafe placement cannot be configured by accident. A sandbox backend reports the enforcement level it actually provides.
+
+Tool calls are journaled like everything else. Wrapped in `RecordingTool`, a call is an event with a causal parent; under exact replay, `ReplayingTool` serves the recorded result without calling the tool. A gate refusal, such as the skill gate from [Chapter 06](./06-skills.md), comes back as the tool's result, so refusals are replayable evidence too.
+
+The registry does not have to be fixed at build time. `ToolRegistry` can take a live `ToolSource` that is consulted on every read: the schema list, dispatch, and the catalog a run checks its allow-list against. Statically registered tools always win a name collision, so a source extends a graph and never shadows it. The server's connections plug in this way.
 
 ## MCP: discovery in, governance around
 
-Rusty's MCP client (`rusty-core/src/mcp.rs`) is a JSON-RPC client over stdio — newline-delimited or `Content-Length` framing, per-request timeouts, and a 16 MiB frame cap applied *before* any length-driven allocation, because a hostile server's declared frame size is a claim, not a fact. `McpClient::into_tools()` lists a server's tools and returns them as ordinary `Tool` registrations — so MCP tools flow through the same executor, the same ReAct graph, the same journal, with zero graph changes. The R0.9 bridges (Chapter 07) complete the picture in both directions: a graph exposed *as* an MCP server runs under its declared manifest and budget, and outbound MCP calls are journaled, idempotency-keyed effects. The bridge design is honest about the boundary: it governs Rusty's own exposure; it cannot fix the ecosystem's ambient-authority posture.
+Rusty's MCP client (`rusty-core/src/mcp.rs`) is JSON-RPC 2.0 over any async reader and writer, with `McpStdioClient::spawn` to launch a server as a child process. It supports newline-delimited JSON and LSP-style `Content-Length` framing, puts a timeout on every request (30 seconds by default), and requests protocol revision `2024-11-05`. Inbound frames are capped at 16 MiB (`MAX_FRAME_BYTES`), checked before any length-driven allocation, because a hostile server's declared frame size cannot be trusted. `McpClient::into_tools()` lists a server's tools and returns them as ordinary `Tool`s, so MCP tools go through the same executor, the same ReAct graph, and the same journal without graph changes.
+
+The R0.9 bridges ([Chapter 07](./07-capsules.md#cedar-and-signed-run-receipts)) cover both directions: a registered assistant can be exposed as an MCP tool, and outbound MCP calls are journaled effects with derived idempotency keys. The bridges govern Rusty's own exposure. They cannot change how the rest of the MCP ecosystem grants authority.
 
 ## The connector standard: one shape, no exceptions
 
-The standard's opening rule is absolute: **every connector is one shape — a `ConnectorManifest` — and there is no second way to reach an external system** (`docs/connector-standard.md`, `rusty-core/src/connector.rs`). A connector that doesn't fit the standard is a gap in the standard; the work is to close the gap, never to let one connector be the odd one out.
+The rule from [docs/connector-standard.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/connector-standard.md): every connector is one shape, a `ConnectorManifest` (`rusty-core/src/connector/manifest.rs`), and there is no second way to reach an external system. A connector that does not fit is a gap in the standard, and the fix is to close the gap. The connector plane is on `main`, not yet in a versioned release.
 
-The manifest is one JSON document, content-hashed, registered on the server: identity fields; an https-only `base_url` templated over config; a `connection_specification` in JSON Schema — *everything* a connection needs; `operations`, each with method, path, params schema, declared effect, and ordered auth alternatives; a `check` naming a parameterless read-only GET; and a `hash` that is derived, never chosen. Three properties follow. One declaration serves every surface — Studio's form, server validation, sealed-secret extraction, the tools an agent sees, the egress policy all read the same document, so nothing drifts. Content addressing means a manifest cannot change under a connection configured against it. And **the check is the gate**: a configuration is proven against the real system before it is stored — "saved" means "answered."
+A manifest is one JSON document, content-hashed and registered on the server. Its fields:
 
-The rules behind the manifest read like scar tissue, because they are:
+- `id`, `version`, `display_name`, `description`, and an https `documentation_url`
+- `base_url`: the API root, templated over config and required to be https, checked on the template and on the rendered URL
+- `connection_specification`: JSON Schema draft-07 describing everything a connection needs
+- `operations`: each with a method, path, params schema, declared effect, and an ordered list of auth alternatives
+- `check`: the name of a parameterless read-only GET used as the setup gate
+- `hash`: SHA-256 of the canonical serialization of the rest, derived and never chosen
 
-- **The spec must constrain.** `additionalProperties: false` at every object level, including inside `oneOf`. An undeclared field is a refusal, not a silent extra. (This is the rule the stray `credentials.oauth` block broke.)
-- **Alternatives are declared, not improvised.** Multiple auth methods are a `oneOf` over closed objects with a `const` discriminator. Selection is a question about shapes, answered without touching the network; once an alternative is selected, its failure is fatal and says what the other system said — no falling through to a misleading "your config was wrong."
-- **Secrets are marked, sealed, and never come back.** `rusty_secret: true` on a property means Studio renders it as a secret, the server extracts it before anything persists, seals it through the credential broker, and serves the instance back with the marker in its place. The studio cannot read a saved secret, and neither can a run's journal.
-- **Every operation declares its effect.** `read_only`, `idempotent`, `compensatable`, `irreversible` — this is what the gate, the approval policy, and the receipt all read. An operation without an honest effect is a governance hole, not a convenience.
-- **The hash is the server's to compute.** A hand-written manifest arrives hashless and the registration door seals it. Requiring clients to canonicalize would make the connector surface Rust-only — the opposite of a standard.
+Three properties follow. One document serves every surface: Studio's form, server validation, secret extraction, the tools an agent sees, and the egress policy all read it, so nothing drifts. A connection points at a manifest hash, so the manifest cannot change under it. And the check is the gate: `POST /connectors/check` proves a configuration against the real system before it is stored.
 
-Egress deserves its own sentence: connector traffic passes through a dedicated egress policy (`rusty-core/src/egress.rs`, wired in `rusty-server/src/connectors.rs`) — host-level allowlisting with DNS discipline against SSRF, so "the agent may call ServiceNow" means the *resolved address* is checked, not just the string in the manifest.
+The rules behind the manifest each exist because of a failure:
+
+- **The spec must constrain.** `ConnectorManifest::validate` requires `additionalProperties: false` at every object level, including inside `oneOf`, and at least one `required` field when an object declares properties. An undeclared field is refused. This is the rule the stray `credentials.oauth` block broke.
+- **Alternatives are declared.** Several auth methods are a `oneOf` over closed objects, each with a `const` discriminator such as `"auth": {"const": "basic"}`. An alternative is selected by shape, without touching the network. Once selected, its failure is final and reports what the other system said. Before this split, a refused OAuth token exchange fell through to the next alternative and was reported as a config error.
+- **Secrets are marked, sealed, and never returned.** A property with `rusty_secret: true` renders as a secret in Studio. The server extracts it before anything persists, seals it through the credential broker, and returns `{"rusty_secret": true}` in its place. Neither Studio nor a run's journal can read a saved secret.
+- **Every operation declares its effect**: `read_only`, `idempotent`, `compensatable`, or `irreversible`, mapping to the kernel's `Effect` classes. The executor admits writes by that declaration: a `compensatable` call is admitted with its compensation registered, and an `irreversible` one is refused until an `ApprovalToken` names that exact call.
+- **The server computes the hash.** A hand-written manifest arrives without one, and registration validates it, orders the operations canonically, and seals it. Requiring clients to compute a canonical hash would make the connector surface usable only from Rust.
+- **A tool is named `{connector}.{operation}` everywhere.** The same name appears in the catalog, the agent's registry, and the model's tool call. A second connection to the same connector is `{connector}@{instance}.{operation}`.
+
+Adding a connector is adding a file. Every `catalog/*/manifest.json` is registered at boot; the repository ships a dozen, including GitHub, Jira, Linear, Slack, Stripe, and Zendesk. For an API the library lacks, `POST /connectors/openapi` turns an OpenAPI 3.x document into a draft manifest: operations with an `operationId` become tools, the rest are listed as unmapped, and you pick one of four auth styles (bearer, basic, header, query). Systems that mint credentials only after a person approves use an `authorization` block for the OAuth round trip: `POST /connectors/instances/{id}/authorize` returns the provider's consent URL, and the callback seals the exchanged tokens into the connection.
+
+## Egress
+
+Connector traffic passes an egress policy. The vocabulary and evaluator are in `rusty-core/src/egress.rs`; interception is in `rusty-server/src/connectors.rs`. The policy is an allow-list. A host with no endpoint policy is denied. The allowed set is every configured connection's host (its API root and token endpoint) plus whatever the operator lists in `RUSTY_EGRESS_ALLOW`, recomputed whenever a connection is created, granted, rotated, or revoked.
+
+`preflight_egress` resolves the hostname and checks the resulting addresses. An address that is private, loopback, or link-local is refused unless the endpoint pins it explicitly. The connection is then made to the exact address preflight approved, while the request keeps its hostname for SNI, certificate verification, and the Host header. This defends against DNS rebinding and server-side request forgery: the check applies to the resolved address, not only to the string in the manifest.
+
+```mermaid
+flowchart LR
+    M["model tool call<br>github.get-issue"] --> X["ToolExecutor"]
+    X --> A{"effect admission<br>irreversible needs<br>ApprovalToken"}
+    A -->|"admitted"| C["connection tool<br>credential via broker handle"]
+    C --> P{"preflight_egress<br>host allowed?<br>address public or pinned?"}
+    P -->|"denied"| D["typed refusal"]
+    P -->|"allowed"| API["pinned socket to<br>external API"]
+```
 
 ::: tip Key takeaways
-- `Tool` / `ToolRegistry` / `ToolExecutor`: parallel dispatch, order-preserving results, failure isolated per call into an `ERROR:` message the model can read.
-- Two taxonomies on every tool: `Effect` for retry safety, `EffectClass` + `SandboxRequirement` for execution placement.
-- MCP tools are ordinary tools once listed — same executor, same journal; hostile framing is capped before allocation.
-- A connector is one manifest, content-hashed, with a constraining spec, declared auth alternatives, sealed secrets, per-operation effects, and a live check as the storage gate.
-- Egress is enforced at resolution, not at the string.
+- `Tool`, `ToolRegistry`, and `ToolExecutor` give parallel dispatch, results in call order, and per-call failure containment (including panics) as `ERROR:` messages.
+- Every tool has an `Effect` for retry safety and an `EffectClass` plus `SandboxRequirement` for placement; unsafe placements panic at registration.
+- MCP tools become ordinary tools once listed, and inbound frames are capped at 16 MiB before allocation.
+- A connector is one content-hashed manifest with a closed spec, declared auth alternatives, sealed secrets, per-operation effects, and a live check before anything is stored.
+- Egress is an allow-list checked against resolved addresses, with the socket pinned to what preflight approved.
 :::
 
 **Further reading**
 
-- [docs/connector-standard.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/connector-standard.md) — the manifest rules and the reasons behind them
-- [rusty-core/src/tool.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/tool.rs) — the tool trait, registry, and executor
-- [rusty-core/src/mcp.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/mcp.rs) — the MCP client
-- [rusty-core/src/egress.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/egress.rs) — the egress policy with DNS discipline
+- [docs/connector-standard.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/connector-standard.md): the manifest rules and the reasons behind them
+- [rusty-core/src/tool.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/tool.rs): the tool trait, registry, and executor
+- [rusty-core/src/mcp.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/mcp.rs): the MCP client
+- [rusty-core/src/connector/manifest.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/connector/manifest.rs): `ConnectorManifest` and its validation
+- [rusty-core/src/egress.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/egress.rs): the egress policy and DNS preflight

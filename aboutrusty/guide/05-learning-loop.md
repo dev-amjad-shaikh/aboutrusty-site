@@ -6,83 +6,99 @@ title: 05 · The learning loop
 
 # The learning loop
 
-Chapter 04 ended with a rule: a memory write changes what retrievals return, and nothing else. This chapter is about everything else — prompts, policies, tool permissions — and the pipeline a change must travel before it touches production behavior. The rule, stated precisely: **no learning process may silently rewrite a production prompt, graph, policy, memory, or tool permission. Learning produces an immutable candidate; the candidate is evaluated against recorded evidence; promotion is a journaled transition bounded by a declared envelope; rollback re-points an immutable version pointer.**
+Chapter 04 ended with a rule: a memory write changes what retrievals return and nothing else. This chapter covers everything else that shapes behavior (prompts, policies, tool permissions, model settings, skills) and the path a change must take before it reaches production. The rule, from the module docs of `rusty-core/src/learn.rs`:
+
+> No learning process may silently rewrite a production prompt, graph, policy, memory, or tool permission.
+
+Learning produces an immutable candidate. The candidate is evaluated against recorded evidence. Promotion is a journaled transition bounded by a declared envelope. Rollback moves an immutable version pointer back.
 
 ## The concept: improvement without governance is drift
 
-Every deployed agent system improves, or it decays. The question is what "improves" looks like operationally.
+A deployed agent changes over time whether you plan for it or not. The question is what a change looks like operationally.
 
-The research lineage gives agents that learn from verbal feedback — Reflexion and CLIN persist reflections as memory and do better on the next attempt. The production lineage gives release engineering: a candidate build serves a bounded fraction of traffic against a live baseline before full rollout — canary and shadow deployment, the SRE workbook's shape. The governance lineage gives attribution and reversibility: every change has an author, an evaluation, an approver, and a way back.
+Three lines of work inform the design in [docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md). Research agents such as Reflexion and CLIN learn from verbal feedback by storing reflections as memory. Release engineering gives canary and shadow deployment: a candidate serves a bounded share of traffic beside a live baseline before full rollout. Governance requires that every change has an author, an evaluation, an approver, and a way back.
 
-What a framework does with a config-file edit and a restart, a runtime can do as an evidence-carrying state transition. The difference only matters the first time someone asks "why did the agent's behavior change last Tuesday?" — and then it's the only thing that matters.
+A framework handles a change with a config edit and a restart. A runtime can handle it as a journaled state transition with evidence attached. That matters when someone asks why the agent's behavior changed last Tuesday.
 
-There's a subtler reason this belongs in the runtime, and it's the Flight Recorder's raison d'être from Chapter 03. The learning contract was frozen before any learning shipped, so every journal since R0.5 is already learnable evidence: effect classes, causal parentage, cost and latency, policy version pins in every checkpoint header, decision events with propensity. Learning doesn't introduce a parallel telemetry system. It consumes the journal the same way replay does.
+The learning loop reads the same journal replay reads ([Chapter 03](./03-journals.md)). Checkpoint headers pin the policy version and run manifest digests, events carry effect classes and causal parents, and `DecisionEvent`s carry propensities. There is no second telemetry system to keep in sync.
 
 ## The correction loop: the highest-trust input
 
-Before the loop proper, one input deserves its own treatment, because it's where most real improvement starts: a human tells the agent it got something wrong.
+Much real improvement starts with a person saying the agent got something wrong. A `Correction` (`rusty-core/src/memory.rs`, golden-pinned) becomes an attributed memory record or example. It never rewrites what it corrects in place. Three rules apply.
 
-A correction becomes an attributed candidate memory or example — **never an in-place rewrite of what it corrects** (`Correction` in `rusty-core/src/memory.rs`, golden-pinned). Three rules:
+1. **Attribution travels with the result.** `author` is mandatory and validated at deserialization. The derived record carries `human:{author}` provenance with the correction id in its evidence, and confidence 1.0.
+2. **Scope decides the path.** A run-scope correction is adopted directly, because it affects only the run that produced it. At agent scope or wider, the derived record carries a `Candidacy` mark and waits for evaluation. A wrong correction at tenant scope would be a production incident. A correction to a keyed record inherits the key, so it supersedes the old record automatically.
+3. **A correction becomes a test case.** A correction that targets a run event also yields an `example` record: the input the run saw and the corrected output. A distiller folds examples into a new version of a `rusty-eval` dataset. Datasets are JSONL files (`rusty-eval/src/dataset.rs`), versioned and never edited in place. The next candidate is evaluated against a dataset that contains the failing case.
 
-1. **Attribution travels with the derived record.** A correction must name its corrector — a correction that can't name its author is indistinguishable from a prompt edit. The candidate record carries `provenance: human:{author} via correction:{id}` and defaults to confidence 1.0.
-2. **Scope decides the path.** A run-scope correction is adopted directly — it affects only the run that produced it. Anything wider becomes a candidate evaluated before promotion, because a wrong human correction at tenant scope is a production incident with a name attached.
-3. **Corrections enter evaluation as examples.** A correction targeting a run event also yields an `example`-kind record, folded into a *new version* of a `rusty-eval` dataset — never an edit in place; datasets are canonical JSONL precisely so the diff is visible in version control. The candidate is then evaluated against a dataset that contains the failing case. The correction is both the fix and the regression test.
-
-One boundary is drawn explicitly: `rusty-eval` owns capture and normalization of human feedback (ratings, edits, thumbs — `rusty-eval/src/feedback.rs`); it does not write memory and does not promote anything. The correction loop consumes feedback records and owns everything downstream.
+The server surface is `POST /memory/corrections`. `rusty-eval` owns capturing human feedback (ratings, edits, thumbs) in `rusty-eval/src/feedback.rs`. It does not write memory and does not promote anything.
 
 ## The six stages
 
-The loop never runs inside a production run. It runs between runs, over recorded evidence, and every stage transition is a durable, journaled event.
+The loop never runs inside a production run. It runs between runs, over recorded evidence, and each transition is journaled.
 
 ```mermaid
 flowchart LR
-    O["Observe<br><small>terminal journals + eval reports</small>"] --> D["Distill<br><small>immutable Candidate</small>"]
-    D --> E["Evaluate<br><small>replay + experiments</small>"]
-    E --> P["Promote<br><small>envelope · approval · canary</small>"]
-    P --> M["Monitor<br><small>drift vs. promotion evidence</small>"]
-    M -->|"regression"| R["Roll back<br><small>re-point version pointer</small>"]
+    O["Observe<br>terminal journals,<br>eval reports"] --> D["Distill<br>immutable Candidate"]
+    D --> E["Evaluate<br>replay summary +<br>experiment compare"]
+    E --> P["Promote<br>envelope, approval,<br>or canary"]
+    P --> M["Monitor<br>drift vs promotion<br>evidence"]
+    M -->|"regression"| R["Roll back<br>re-point VersionPointer"]
     R --> O
     M -.->|"healthy"| O
 ```
 
-**Observe.** Completed runs' journals and experiment reports are the input. "Completed" is load-bearing — learning reads terminal evidence, never in-flight state.
+**Observe.** Input is completed runs' journals and experiment reports. Learning reads terminal evidence only, never a run in flight.
 
-**Distill.** A distiller — application code, not runtime code — reads observations and produces a `Candidate` (`rusty-core/src/learn.rs`): an immutable, versioned, content-addressed declaration of a proposed change. Four kinds, a closed enum:
+**Distill.** A distiller reads observations and produces a `Candidate` (`rusty-core/src/learn.rs`): an immutable, content-addressed declaration of a proposed change. Distillers are application code. The runtime ships one reference distiller for skills (`rusty-core/src/skill_distill.rs`, on `main`). `CandidateKind` is a closed enum that has grown additively:
 
-| Kind | What it carries | Production surface it would change |
+| Kind | Added in | Changes |
 |---|---|---|
-| `prompt` | New prompt text, content-hashed | A prompt pin in the run manifest |
-| `policy` | Executor policy parameters for one decision family | A `PolicyVersion` in the policy plane |
-| `memory_set` | A set of memory records (adds and supersessions) | Scoped memory content |
-| `tool_permission` | A narrowed or widened tool grant | The tool surface a run may call |
+| `prompt` | R0.8 | one named prompt's text |
+| `policy` | R0.8 | executor policy parameters for one decision family |
+| `memory_set` | R0.8 | a set of memory records (adds and supersessions) |
+| `tool_permission` | R0.8 | a narrowed or widened tool grant |
+| `tool_contract` | R0.11 | the JSON schema a tool's manifest pin digests |
+| `model_settings` | R0.11 | a model id plus parameters |
+| `memory_configuration` | R0.11 | retrieval and assembly settings |
+| `middleware_composition` | R0.11 | an ordered middleware list with per-layer config |
+| `context_policy` | `main` | section layouts, budget splits, tokenizer pin, compaction trigger |
+| `skill` | `main` | a skill package by content hash, plus its binding |
 
-Content addressing does double duty: two distillations of the same change converge on one id, and a tampered candidate fails its own address. Creation is journaled (`CandidateCreated`) with the distiller's identity and the evidence span it read.
+The candidate id is SHA-256 over its canonical content (`derive_candidate_id`). Two distillations of the same change get the same id, and a tampered candidate fails `Candidate::verify_address`. Creation is journaled as `CandidateCreated`.
 
-**Evaluate.** Composition, not duplication: the candidate is evaluated with machinery that already exists. Exact replay re-drives recorded runs with the candidate applied — replay serves journaled effects, so the candidate's behavior is measured against identical evidence with zero outbound calls. `rusty-eval`'s experiment runner drives the candidate over the versioned dataset — which now contains the correction examples — through the real executor, and `compare()` diffs the candidate report against the baseline. The verdict, the report pair, the dataset version, and the replay fixture ids are journaled (`CandidateEvaluated`). The evaluation is evidence, not a log line.
+**Evaluate.** Evaluation reuses existing machinery. The runtime defines the journaled shape, `CandidateEvaluation`, and a `CandidateEvaluator` seam. The work happens in `rusty-eval`, because `rusty-eval` depends on the runtime and not the reverse. An evaluation carries a replay summary (divergence against recorded runs plus fixture ids), a baseline and a candidate report from `rusty-eval`'s `ExperimentRunner` over a named dataset version, the `compare()` verdict, and the thresholds it used. The server's evaluator composes `ExperimentRunner` behind `POST /learn/candidates/{id}/evaluate`. The result is journaled as `CandidateEvaluated`.
 
-**Promote.** Promotion is gated by a **promotion envelope**: a declared, per-deployment `PromotionEnvelope` naming, per candidate kind, what may promote automatically — the evidence thresholds: no regression *and* improvement on the target metric over the named dataset version — and what requires review or a canary. Inside the envelope, the envelope itself is the standing approval: versioned, declared, not a silent default. Outside it, promotion requires a human `ApprovalToken` scoped to an effect id derived over the candidate's content hash and target scope — so an approval for one candidate is non-transferable to another, and `approved_by` gives attribution. The mechanism composes the effect kernel rather than inventing an approval parallel to it: promotion executes as an idempotent effect under the key `promotion:{candidate_id}`, so a retried promotion converges. A canary promotion binds the candidate to a declared fraction of new runs by seeded draw — a recorded run reproduces its assignment — with the static version serving the rest.
+**Promote.** A `PromotionEnvelope` declares, per candidate kind, one of three rules (`EnvelopeRule`):
 
-**Monitor drift.** Post-promotion, the promoted version's runs are sampled into scheduled experiments against the promotion-time dataset. Drift is declared thresholds on journaled metrics — pass-rate drop, p95 latency growth — and the design is honest that this is not statistical process control: the monitor answers "is the promoted version regressing against the evidence that promoted it," nothing deeper.
+- `Auto`: promote when the verdict clears the declared thresholds (`min_improvement`, default 0.0, which means any improvement and not parity; optionally a pinned dataset version; for `memory_set`, the allowed scopes).
+- `Approval`: always require a human `ApprovalToken`.
+- `Canary { fraction, auto }`: after clearing the thresholds, bind the candidate to a fraction of new runs.
 
-**Roll back.** Every promotion is a pointer move. The active version per surface is an immutable pointer to a candidate id; rollback re-points it and journals `CandidateRolledBack` with the drift evidence that caused it. Because candidates are content-addressed and immutable, rollback is *exact* — the restored version is byte-identical to the one that previously served, not a reconstruction. New runs bind the re-pointed version at admission; in-flight runs keep the version their checkpoint header pins.
+The shipped default, `PromotionEnvelope::r08_default()`, auto-promotes only `memory_set` candidates at `run` or `agent` scope and requires approval for every other kind. An `ApprovalToken` is scoped to `promotion_effect_id`, derived from the candidate's content hash and target scope, so an approval for one candidate cannot be reused for another, and its `approved_by` is the attribution. Promotion runs as an idempotent effect under the key `promotion:{candidate_id}`, so a retried promotion converges. Canary assignment uses a seeded draw (`canary_admits`), so a recorded run reproduces its assignment. The gate itself, `admit_promotion`, is a pure function that returns a typed `PromotionRefusal` when it says no.
+
+**Monitor drift.** For executor policies, `GET /policy/drift` runs `detect_policy_drift`: it compares the acting version's journaled outcomes against the baseline recorded at promotion, using declared `DriftThresholds` (completion-rate drop, dead-letter growth, p95 latency ratio, and a minimum number of decisions before any verdict). The design says plainly that this is a regression check against the evidence that promoted the version, not statistical process control. For other candidate kinds, the design calls for scheduled experiments against the promotion-time dataset; the rollback endpoint takes the reason as input.
+
+**Roll back.** The active version of each surface is a `VersionPointer` to a candidate id. Promotion moves the pointer. `POST /learn/candidates/{id}/rollback` moves it back and journals `CandidateRolledBack`. Candidates are immutable, so the restored version is byte-identical to what served before. New runs bind the re-pointed version at admission. Runs already in flight keep the version their checkpoint header pins.
 
 ## The policy plane, and an honest caveat
 
-The executor's own mechanical decisions — retry, timeout, placement — learn through the same machinery. Policy versions are epoch-bounded and immutable: active from promotion until the next promotion, pinned in every checkpoint header, so replay of any run in an epoch reproduces that epoch's decisions. The static floor `static-v0` — deterministic, no learning — remains the default forever; every candidate policy is evaluated against it, and revert-to-floor is always a legal rollback. Closed action sets stay closed: a learned policy chooses among enum members, never free-form output. That is what keeps this plane mechanical — dense signals, closed spaces.
+The executor's own mechanical decisions learn through the same pipeline. R0.10 (Adaptation) shipped learned retry and timeout policies. A policy version is immutable, active from its promotion until the next one, and pinned in every checkpoint header, so replaying a run reproduces the decisions of its policy version. The static floor `static-v0` is deterministic, never learns, and stays available: every candidate policy is evaluated against it, and reverting to it is always a legal rollback. A learned policy picks from a closed set of actions (`DecisionAction`) and never produces free-form output.
 
-The propensity caveat, stated plainly because the design states it plainly: off-policy evaluation theory assumes a *stochastic* logging policy. The deterministic floor logs propensity 1.0 for what it did and implicitly zero for everything else, so importance weighting against floor evidence degenerates to "we know what the floor did." R0.8's gate is therefore replay plus experiment comparison, not importance weighting. Propensity earns its keep the moment canary exploration exists — a canary assigning by seeded draw *is* a stochastic policy with known propensities — and the contract was frozen early so this would be true when needed. Nobody pretends it's needed yet.
+R0.10 also added the runtime digital twin (`rusty-core/src/twin.rs`), which re-executes recorded runs under seeded fault schedules and compares the floor with a candidate on identical inputs. `TwinCandidateEvaluator` gates policy promotion on that comparison. The release test, `rusty-server/tests/adaptation_release.rs`, promotes a retry policy distilled from twin evidence and then asserts that reactivating `static-v0` restores the floor's behavior exactly.
+
+The caveat is about propensity. Off-policy evaluation assumes the logging policy was stochastic. The floor is deterministic: it logs propensity 1.0 for what it did and zero for everything else, so importance weighting against floor evidence tells you only what the floor did. That is why R0.8's gate is replay plus experiment comparison, not importance weighting. Propensity becomes useful once there is exploration. The twin's shadow policies decide beside the acting floor, journal as `PolicyDecision` events with their true propensities, and explore by seeded draw, which makes them stochastic policies with known propensities. Freezing `DecisionEvent` in R0.5 is what made that evidence usable when it arrived.
 
 ::: tip Key takeaways
-- The learning rule: no silent rewrites. Candidates are immutable and content-addressed; promotion is journaled and enveloped; rollback is a pointer move.
-- Corrections are the highest-trust input and arrive attributed; past run scope they are candidates, and they carry their own regression test.
-- Evaluation composes existing machinery — exact replay and `rusty-eval` — instead of building a parallel harness.
-- The executor's mechanical policies learn through the same plane, with `static-v0` as the permanent, revertible floor.
-- The propensity caveat is admitted, not hidden: the gate is replay + comparison until canary traffic makes off-policy weighting well-posed.
+- No silent rewrites: candidates are immutable and content-addressed, promotion is journaled and bounded by an envelope, rollback moves a pointer.
+- A correction is attributed, adopted directly only at run scope, and becomes a regression test case.
+- The default envelope auto-promotes only run- and agent-scope memory sets; every other kind needs a scoped `ApprovalToken`.
+- Evaluation reuses replay and `rusty-eval`; for executor policies, the R0.10 digital twin compares candidates with the `static-v0` floor.
+- Importance weighting needs a stochastic logging policy; shadow policies with seeded exploration supply one.
 :::
 
 **Further reading**
 
-- [docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md) — the full R0.8 design, including the executor policy plane
-- [rusty-core/src/learn.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/learn.rs) — `Candidate`, `CandidateKind`, `PromotionEnvelope`
-- [rusty-core/src/effects.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/effects.rs) — the effect kernel and `ApprovalToken`
-- [docs/flight-recorder-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/flight-recorder-design.md) — the evidence the loop consumes
+- [docs/learn-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/learn-design.md): the R0.8 design
+- [docs/adaptation-design.md](https://github.com/dev-amjad-shaikh/rusty/blob/main/docs/adaptation-design.md): the R0.10 design for learned executor policies and the twin
+- [rusty-core/src/learn.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/learn.rs): `Candidate`, `CandidateKind`, `PromotionEnvelope`, `VersionPointer`, `detect_policy_drift`
+- [rusty-core/src/effects.rs](https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/src/effects.rs): the effect kernel and `ApprovalToken`
