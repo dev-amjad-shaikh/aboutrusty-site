@@ -8,7 +8,7 @@ export const stateChannels: Lesson = {
   source: "rusty-core/src/state.rs",
   before: ["2.1"],
   summary:
-    "A graph's state is a set of named channels, and each channel declares a reducer that says how writes merge into it. Nodes never modify state directly. They return partial updates, and the executor merges them at the end of the step. This lesson covers the four reducers, the single-write rule, and the validation that makes a merge all or nothing.",
+    "A graph's state is a set of named channels, and each channel declares a reducer that says how writes merge into it. Nodes never modify state directly. They return partial updates, and the executor merges them at the end of the step.",
   glance: {
     learn: "What each of the four reducers does with one write and with several",
     try: "Firing writes from two parallel nodes into one channel",
@@ -17,24 +17,14 @@ export const stateChannels: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
-      blocks: [
-        {
-          type: "p",
-          text: "Two nodes run in the same step and both return a value for `results`. One of them has to win, or the values have to be combined. If the framework decides silently, you lose data and find out later, usually from a wrong answer rather than an error.",
-        },
-        {
-          type: "p",
-          text: "Rusty makes you decide up front, per key. Every key in the state is a channel, and every channel has a reducer. The reducer is the merge rule, and the default rule refuses concurrent writes instead of picking a winner.",
-        },
-      ],
-    },
-    {
       id: "channels",
       title: "Channels and the StateSpec",
       toc: "Channels",
       blocks: [
+        {
+          type: "p",
+          text: "Two nodes run in the same step and both return a value for `results`. Either one of them wins or the values are combined. If a framework picks silently, you find out later from a wrong answer. Rusty makes you pick up front, per key: every key in the state is a [[State channel|channel]], and every channel has a [[Reducer|reducer]].",
+        },
         {
           type: "p",
           text: "`State` is a JSON object: channel name to value. A `StateSpec` is the schema that goes with it: channel name to `Reducer`. You build one with the `channel` builder and pass it to `Executor::run` next to the graph. This is the spec from the fan-out example:",
@@ -50,7 +40,7 @@ export const stateChannels: Lesson = {
         },
         {
           type: "p",
-          text: "A node reads the whole state from its snapshot and returns only the channels it wants to change, for example `NodeOutput::update(\"results\", record)`. Updates are partial by design: a node returns only what it changes, so two nodes that touch different channels never interact.",
+          text: "A node reads the whole state from its snapshot and returns only the channels it changes, for example `NodeOutput::update(\"results\", record)`. Two nodes that touch different channels never interact.",
         },
         {
           type: "p",
@@ -65,7 +55,20 @@ export const stateChannels: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "A reducer is a function from the current value and one update to the new value. Here is the whole of it:",
+          text: "A reducer is a function from the current value and one update to the new value. Before reading it, commit to an answer:",
+        },
+        {
+          type: "predict",
+          question: "A `DeepMerge` channel holds `{\"tools\": [\"search\"]}` and receives `{\"tools\": [\"fetch\"]}`. What does it hold afterwards?",
+          options: [
+            "`{\"tools\": [\"search\", \"fetch\"]}`",
+            "`{\"tools\": [\"fetch\"]}`",
+            "`{\"tools\": [\"search\"]}`",
+            "An InvalidUpdate error",
+          ],
+          answer: 1,
+          explain:
+            "DeepMerge recurses only while both sides are objects. Two arrays are not objects, so the update replaces the old value. If you want the lists joined, the list needs its own `Append` channel.",
         },
         {
           type: "code",
@@ -98,7 +101,7 @@ export const stateChannels: Lesson = {
           rows: [
             {
               label: "`Overwrite`",
-              text: "The update replaces the value. The default for any channel, and single-write: at most one write per super-step.",
+              text: "The update replaces the value. It is the default for any channel, and it accepts at most one write per super-step.",
             },
             {
               label: "`Append`",
@@ -106,7 +109,7 @@ export const stateChannels: Lesson = {
             },
             {
               label: "`DeepMerge`",
-              text: "Objects merge key by key, recursively. Any pair that isn't two objects resolves to the update, so an array inside the object is replaced, not concatenated.",
+              text: "Objects merge key by key, recursively. Any pair that isn't two objects resolves to the update, so an array inside the object is replaced.",
             },
             {
               label: "`AddMessages`",
@@ -121,8 +124,21 @@ export const stateChannels: Lesson = {
       title: "Try it",
       blocks: [
         {
+          type: "predict",
+          question: "`research_a` and `research_b` run in the same step and both write `summary`, declared `Overwrite`. `research_b` finishes last. What is in `summary` after the step?",
+          options: [
+            "`research_b`'s value, because it finished last",
+            "`research_a`'s value, because it sorts first",
+            "Both values, as an array",
+            "Nothing changes: the step fails",
+          ],
+          answer: 3,
+          explain:
+            "A second write to an `Overwrite` channel in one step is an error, `RustyError::InvalidUpdate`, raised before any channel changes. Picking a winner would make the result depend on task timing.",
+        },
+        {
           type: "p",
-          text: "Two nodes, `research_a` and `research_b`, run in the same step and each write one channel. Pick a reducer and change who writes and who finishes first. The merge runs the same checks and produces the same error text as `apply_super_step`.",
+          text: "Check it below. Pick a reducer and change who writes and who finishes first. The merge runs the same checks and produces the same error text as `apply_super_step`.",
         },
         { type: "diagram", name: "reducer-lab" },
       ],
@@ -146,7 +162,7 @@ export const stateChannels: Lesson = {
         },
         {
           type: "p",
-          text: "For `Overwrite`, \"last write wins\" would mean \"whichever task finished last wins\", which changes from run to run. So Rusty treats a second write as a bug in the graph and fails the step with `RustyError::InvalidUpdate`. The message names both writers:",
+          text: "For `Overwrite`, \"last write wins\" would mean \"whichever task finished last wins\", which changes from run to run. Rusty treats a second write as a bug in the graph and fails the step with `RustyError::InvalidUpdate`. The message names both writers:",
         },
         {
           type: "code",
@@ -155,7 +171,57 @@ export const stateChannels: Lesson = {
         },
         {
           type: "p",
-          text: "The fix is almost always to choose a reducer that aggregates. If the channel really should hold one value, make sure only one node in the step writes it, for example by routing the parallel results into a node that picks one.",
+          text: "The fix is almost always a reducer that aggregates. If the channel really should hold one value, make sure only one node in the step writes it, for example by routing the parallel results into a node that picks one.",
+        },
+        {
+          type: "lab",
+          title: "Break the fan-in",
+          intro:
+            "The fan-out example runs `process_item` four times in one step, and all four write `results`. Run it as shipped and look at the `results` channel it prints.",
+          commands: `cd rusty-core
+cargo run --example parallel_fanout`,
+          output: `=== parallel_fanout: dynamic map-reduce via Route::Send ===
+
+[generate_topics] emitting 4 topics
+[router] fanning out 4 Sends to \`process_item\`
+[process_item] (step 1) processed "super-step scheduling" -> checksum 2142
+[process_item] (step 1) processed "channel reducers" -> checksum 1622
+[process_item] (step 1) processed "checkpoint persistence" -> checksum 2285
+[process_item] (step 1) processed "interrupt/resume" -> checksum 1709
+[summarize] fan-in complete: 4 results merged, total checksum 7758
+
+=== run finished (Done) ===
+final summary: "fan-in complete: 4 results merged, total checksum 7758"
+results channel: [
+  {
+    "chars": 21,
+    "checksum": 2142,
+    "topic": "super-step scheduling"
+  },
+  {
+    "chars": 22,
+    "checksum": 2285,
+    "topic": "checkpoint persistence"
+  },
+  {
+    "chars": 16,
+    "checksum": 1622,
+    "topic": "channel reducers"
+  },
+  {
+    "chars": 16,
+    "checksum": 1709,
+    "topic": "interrupt/resume"
+  }
+]`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change:
+              "In `examples/parallel_fanout.rs`, declare the fan-in channel as `.channel(\"results\", Reducer::Overwrite)` and run the example again.",
+            predict: "Does the run finish? If not, which node names does the error mention?",
+            result:
+              "All four `process_item` lines still print, because the nodes run before the merge. Then the program exits with `Error: InvalidUpdate(...)`: the channel can receive only one value per super-step, already written by node `process_item`, second write from node `process_item`. Both writers carry the same name because the four Send invocations share one node. `summarize` never runs.",
+          },
         },
       ],
     },
@@ -166,14 +232,14 @@ export const stateChannels: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "`StateSpec::apply_super_step` receives every node's updates for the step. It checks all of them before it changes any channel. Three checks run for each write:",
+          text: "`StateSpec::apply_super_step` receives every node's updates for the step and checks all of them before it changes any channel. Three checks run for each write:",
         },
         {
           type: "list",
           ordered: true,
           items: [
             "The channel is declared in the spec. A write to anything else fails, and the message tells you to declare the channel in the StateSpec.",
-            "For `Append` and `AddMessages`, the current value, if there is one, is an array. A non-array value is a type bug in the graph, so it fails rather than being silently replaced.",
+            "For `Append` and `AddMessages`, the current value, if there is one, is an array. A non-array value is a type bug in the graph, so the write fails instead of silently replacing it.",
             "For `Overwrite`, this is the channel's first write in the step.",
           ],
         },
@@ -200,7 +266,7 @@ export const stateChannels: Lesson = {
         },
         {
           type: "p",
-          text: "Because the loop returns before the merge loop starts, a failure leaves the state exactly as it was at the start of the step. The executor then aborts the step, so no write from it survives. [2.3 The super-step loop](/learn/super-step-loop#barrier) covers what happens to the run.",
+          text: "The loop returns before the merge loop starts, so a failure leaves the state exactly as it was at the start of the step. The executor then aborts the step and no write from it survives. [2.3 The super-step loop](/learn/super-step-loop#barrier) covers what happens to the run.",
         },
       ],
     },
@@ -210,7 +276,7 @@ export const stateChannels: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "Node tasks finish in whatever order the scheduler produces. For `Append`, order is visible in the result. So before validating, `apply_super_step` sorts the writes by node name:",
+          text: "Node tasks finish in whatever order the scheduler produces, and for `Append` the order is visible in the result. So before validating, `apply_super_step` sorts the writes by node name:",
         },
         {
           type: "code",
@@ -225,13 +291,13 @@ export const stateChannels: Lesson = {
         {
           type: "note",
           title: "Invocations of the same node",
-          text: "The sort is stable, and it sorts by name. When a `Send` fan-out runs one node several times in a step, those invocations share a name, so their writes keep the order in which they reached the barrier. If the order of fanned-in items matters, sort them in the node that reads them, or include a key in each item.",
+          text: "The sort is stable, and it sorts by name. When a `Send` fan-out runs one node several times in a step, those invocations share a name, so their writes keep the order in which they reached the barrier. In the lab above, `results` came back in a different order from the log lines. If the order of fanned-in items matters, sort them in the node that reads them, or include a key in each item.",
         },
       ],
     },
     {
       id: "add-messages",
-      title: "AddMessages: upsert by id",
+      title: "AddMessages",
       toc: "AddMessages",
       blocks: [
         {
@@ -257,7 +323,7 @@ export const stateChannels: Lesson = {
         },
         {
           type: "p",
-          text: "A node can therefore rewrite an earlier message, for example to replace a streaming draft with the final text, by returning a message with the same `id`. Messages without an `id` are always appended, and so are messages whose `id` is not a string: `{\"id\": 123}` never matches anything.",
+          text: "A node can rewrite an earlier message, for example to replace a streaming draft with the final text, by returning a message with the same `id`. Messages without an `id` are always appended, and so are messages whose `id` is not a string: `{\"id\": 123}` never matches anything.",
         },
       ],
     },
@@ -268,54 +334,26 @@ export const stateChannels: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "Every node gets its own copy of the state, and every checkpoint keeps one. That would be expensive if copies were deep. They aren't: each channel value sits behind an `Arc`, so cloning a `State` is two reference-count bumps. At the barrier the snapshot is dropped first, so a channel no checkpoint still shares is merged in place, and a shared one is copied alone. Channels nobody wrote stay shared between the old and new state, which is also what delta checkpoints diff against. [3.1 Checkpoints](/learn/checkpoints#delta-checkpoints) covers that side.",
+          text: "Every node gets its own copy of the state, and every checkpoint keeps one. That would be expensive with deep copies. Each channel value sits behind an `Arc`, so cloning a `State` is two reference-count bumps. At the barrier the snapshot is dropped first, so a channel no checkpoint still shares is merged in place, and a shared one is copied alone. Channels nobody wrote stay shared between the old and new state, which is also what delta checkpoints diff against. [3.1 Checkpoints](/learn/checkpoints#delta-checkpoints) covers that side.",
         },
       ],
     },
     {
-      id: "trade-offs",
-      title: "Trade-offs",
+      id: "limits",
+      title: "Limits",
       blocks: [
         {
-          type: "rows",
-          rows: [
-            {
-              label: "The spec is the whole schema.",
-              text: "Every channel a node writes must be declared. Adding a field to a node's output means adding it to the spec too.",
-            },
-            {
-              label: "Strict by default.",
-              text: "`Overwrite` fails on concurrent writes instead of picking one. You see the error the first time two branches collide, which is earlier than you would otherwise find the bug.",
-            },
-            {
-              label: "Untyped values.",
-              text: "Channels hold JSON. Type checks happen when a node deserializes a channel with `get_as`, not when the graph is compiled.",
-            },
-            {
-              label: "Four fixed reducers.",
-              text: "There is no custom reducer function. Anything more specific than append or merge is done by a node that reads the channel and writes the result.",
-            },
+          type: "list",
+          items: [
+            "Every channel a node writes must be declared. Adding a field to a node's output means adding it to the spec too.",
+            "Channels hold JSON. Type checks happen when a node deserializes a channel with `get_as`, after the graph compiles.",
+            "There is no custom reducer function. Anything more specific than append or merge is done by a node that reads the channel and writes the result.",
           ],
         },
       ],
     },
   ],
-  takeaways: [
-    "Every state key is a channel, declared in the StateSpec with one of four reducers.",
-    "Nodes return partial updates; the executor merges them at the barrier through each channel's reducer.",
-    "Overwrite is the default and accepts one write per step. A second write is an InvalidUpdate naming both nodes.",
-    "All writes are validated before any are applied, so a bad step leaves the state untouched.",
-    "Writes merge in node-name order, and AddMessages upserts by string id.",
-  ],
   quiz: [
-    {
-      q: "`research_a` and `research_b` both write `summary` (Overwrite) in one step. Which value is kept?",
-      a: "Neither. The merge fails with InvalidUpdate before any channel changes, and the executor aborts the step.",
-    },
-    {
-      q: "A `DeepMerge` channel holds `{\"tools\": [\"search\"]}` and receives `{\"tools\": [\"fetch\"]}`. What is the result?",
-      a: "`{\"tools\": [\"fetch\"]}`. Two arrays are not both objects, so the update wins. Use an Append channel if you want the lists joined.",
-    },
     {
       q: "An `AddMessages` channel receives `{\"id\": \"m2\", \"content\": \"final\"}` and already holds a message with id `m2`. Where does the new message go?",
       a: "It replaces the existing `m2` in place, keeping its position in the list.",
@@ -325,14 +363,12 @@ export const stateChannels: Lesson = {
       a: "InvalidUpdate: the node wrote to an undeclared channel. The spec is the complete schema.",
     },
   ],
+  deeper: [{ book: "02-mental-model.html#five-concepts", label: "The Rusty mental model: five concepts" }],
   sources: [
     { path: "rusty-core/src/state.rs", what: "State, Reducer, StateSpec::apply_super_step, add_messages" },
     { path: "rusty-core/src/node.rs", what: "NodeOutput::update, partial updates" },
     { path: "rusty-core/src/error.rs", what: "RustyError::InvalidUpdate" },
     { path: "rusty-core/examples/parallel_fanout.rs", what: "A spec with Overwrite and Append channels" },
   ],
-  related: [
-    { label: "2.3 The super-step loop", href: "/learn/super-step-loop" },
-    { label: "Book: The Rusty mental model", href: "/guide/02-mental-model.html" },
-  ],
+  related: [{ label: "2.3 The super-step loop", href: "/learn/super-step-loop" }],
 };

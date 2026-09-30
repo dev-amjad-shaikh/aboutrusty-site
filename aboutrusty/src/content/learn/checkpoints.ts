@@ -8,7 +8,7 @@ export const checkpoints: Lesson = {
   source: "rusty-core/src/checkpoint.rs",
   before: ["2.3"],
   summary:
-    "A checkpoint is a saved copy of a thread's state at a super-step boundary, plus the list of nodes that run next. Resume, human approval, time travel, and crash recovery all read from it. This lesson covers what a checkpoint holds, where it's stored, and how you go back in time with it.",
+    "A checkpoint is a saved copy of a thread's state at a super-step boundary, plus the list of nodes that run next. Resume, human approval, time travel, and crash recovery all read from it.",
   glance: {
     learn: "What a checkpoint stores and when it's written",
     try: "Forking a thread and replaying it from an old checkpoint",
@@ -17,24 +17,14 @@ export const checkpoints: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
-      blocks: [
-        {
-          type: "p",
-          text: "An agent run can take seconds or weeks. It can wait for a person, outlive a deploy, or die with its process. Anything held only in memory is lost at that point, and the run has to start over, repeating model calls you already paid for.",
-        },
-        {
-          type: "p",
-          text: "Rusty saves the run at every step boundary. Because the super-step loop never applies half a step (see [2.3](/learn/super-step-loop)), each boundary is a consistent point to save and to resume from.",
-        },
-      ],
-    },
-    {
       id: "contents",
       title: "What a checkpoint holds",
       toc: "What it holds",
       blocks: [
+        {
+          type: "p",
+          text: "An agent run can take seconds or weeks. It can wait for a person, outlive a deploy, or die with its process, and anything held only in memory is lost with it. So Rusty saves the run at every step boundary. The super-step loop never applies half a step ([2.3](/learn/super-step-loop)), which makes each boundary a consistent point to save and resume from.",
+        },
         { type: "p", text: "The struct is small. The fields that matter for resuming are the thread, the step, the state, and the next nodes:" },
         {
           type: "code",
@@ -77,17 +67,24 @@ pub trait Checkpointer: Send + Sync {
     async fn put(&self, checkpoint: Checkpoint) -> Result<()>;
     async fn get_latest(&self, thread_id: &str) -> Result<Option<Checkpoint>>;
     async fn list(&self, thread_id: &str) -> Result<Vec<Checkpoint>>;
-    async fn get_by_id(&self, thread_id: &str, checkpoint_id: &str)
-        -> Result<Option<Checkpoint>>;
-    async fn fork_thread(&self, src_thread: &str, dst_thread: &str,
-        at_checkpoint_id: Option<&str>) -> Result<usize>;
+    async fn get_by_id(&self, thread_id: &str, checkpoint_id: &str) -> Result<Option<Checkpoint>> {
+        // default: search list()
+    }
+    async fn fork_thread(
+        &self,
+        src_thread: &str,
+        dst_thread: &str,
+        at_checkpoint_id: Option<&str>,
+    ) -> Result<usize> {
+        // default: copy list() up to the checkpoint into dst_thread
+    }
 }`,
         },
         {
           type: "p",
           text: "`put` never overwrites: ids are unique, and a duplicate id is an error. `get_by_id` and `fork_thread` have default implementations built on `list`.",
         },
-        { type: "p", text: "Three backends ship with the runtime:" },
+        { type: "p", text: "Three [[Checkpointer|backends]] ship with the runtime:" },
         {
           type: "rows",
           rows: [
@@ -109,6 +106,52 @@ pub trait Checkpointer: Send + Sync {
           type: "p",
           text: "A file written by a newer checkpoint format is refused with a message naming both versions. Older formats load, because new fields are only ever added with serde defaults.",
         },
+        {
+          type: "predict",
+          question: "`human_in_loop` runs `draft → approve → publish` with a `JsonFileCheckpointer`. The first call suspends at `approve`; the second resumes and finishes. How many checkpoint files does the thread end up with?",
+          options: ["2: one per call", "3: one per node", "4", "6: one per node per call"],
+          answer: 2,
+          explain:
+            "One after step 0 (`draft` ran, next `approve`), one when the run suspends at step 1 (next is still `approve`), one after the resumed step 1 (next `publish`), and one after step 2 (next nothing). The lab below lists them.",
+        },
+        {
+          type: "lab",
+          title: "Checkpoints on disk",
+          intro:
+            "Run the approval example, then look at what the `JsonFileCheckpointer` left in the thread's directory. The `jq` line prints each file's step, next nodes, the channels stored in it, and its `base`.",
+          commands: `cd rusty-core
+cargo run --example human_in_loop
+cd target/examples-checkpoints/human-in-loop/hitl-demo-thread
+ls
+jq -c -s 'sort_by(.created_at)[] | {id: .id[0:8], step, next_nodes, state: (.state | keys), base: .base[0:8]}' *.json`,
+          output: `=== human_in_loop: interrupt/resume with JsonFileCheckpointer ===
+…
+[phase 1] run suspended at \`approve\`
+…
+[phase 1] durable checkpoint id: 3039ee2d-8768-47b3-93a8-b57c52860942
+…
+[phase 2] run completed after resume
+…
+
+3039ee2d-8768-47b3-93a8-b57c52860942.json
+4e825d41-f3e5-432f-af1d-485f4d8e8e99.json
+974345b1-0c5c-4c07-b257-531b9951ef03.json
+eebb836a-a76d-483d-8a2b-94a3bf3deadb.json
+latest
+
+{"id":"974345b1","step":0,"next_nodes":["approve"],"state":["draft"],"base":null}
+{"id":"3039ee2d","step":1,"next_nodes":["approve"],"state":[],"base":"974345b1"}
+{"id":"4e825d41","step":1,"next_nodes":["publish"],"state":["approval"],"base":"3039ee2d"}
+{"id":"eebb836a","step":2,"next_nodes":[],"state":["published"],"base":"4e825d41"}`,
+          capturedAt: "fedbb3a · 2026-09-29",
+          exercise: {
+            change:
+              "Delete the thread directory, then construct the checkpointer with `JsonFileCheckpointer::with_delta_policy(checkpoint_dir, rusty_agent_runtime::checkpoint::DeltaPolicy::full_only())` and run the example again.",
+            predict: "What changes in the `jq` output?",
+            result:
+              "Still four files with the same steps and next nodes, but every `base` is null and every file stores the whole state: `[\"draft\"]`, `[\"draft\"]`, `[\"approval\",\"draft\"]`, then `[\"approval\",\"draft\",\"published\"]`. The default policy stored only the channels that changed, which is why the suspension checkpoint above holds an empty state.",
+          },
+        },
       ],
     },
     {
@@ -118,7 +161,15 @@ pub trait Checkpointer: Send + Sync {
       blocks: [
         {
           type: "p",
-          text: "`get_latest` returns the checkpoint that was stored last, not the one with the highest step number. That sounds like a detail until you replay: replaying from step 2 on the same thread appends new checkpoints whose `step` is lower than the old head. The next resume has to continue that newest timeline, so recency follows insertion order.",
+          text: "The `latest` file in the lab is a pointer to the checkpoint stored last. That is what `get_latest` returns, even when a checkpoint with a higher step number exists.",
+        },
+        {
+          type: "predict",
+          question: "A thread has checkpoints for steps 0 to 5. You replay it from step 2 on the same thread id, and the replay writes new checkpoints for steps 2 and 3. Which checkpoint does the next resume load?",
+          options: ["Step 5, the highest step", "Step 3 from the replay, the last one written", "Step 2, where the replay started"],
+          answer: 1,
+          explain:
+            "Recency follows insertion order. The replay started a newer timeline, and the next resume has to continue it, so the last write wins even though its step number is lower.",
         },
         {
           type: "p",
@@ -137,7 +188,7 @@ pub trait Checkpointer: Send + Sync {
         },
         {
           type: "p",
-          text: "Replaying on the original thread appends to its history. The safer pattern is to fork first, then replay the fork. Step through it:",
+          text: "Replaying on the original thread appends to its history. The safer pattern is to [[Fork|fork]] first, then replay the fork. Step through it:",
         },
         { type: "diagram", name: "fork-tree" },
         { type: "p", text: "In code:" },
@@ -169,7 +220,7 @@ let outcome = executor
       blocks: [
         {
           type: "p",
-          text: "Saving the full state at every step gets expensive when the state is large and mostly unchanged. Two changes in R0.7 address the two costs separately.",
+          text: "Saving the full [[Checkpoint|checkpoint]] state at every step gets expensive when the state is large and mostly unchanged. Two changes in R0.7 address the two costs separately.",
         },
         {
           type: "p",
@@ -195,52 +246,24 @@ let outcome = executor
         { type: "diagram", name: "delta-chain" },
         {
           type: "p",
-          text: "After 32 deltas, or when a delta would be at least 80% the size of the full state, the backend writes a full snapshot. That keeps every resume to at most one full read plus 31 small ones. `put` always receives a full checkpoint and every read returns a full one, so callers never see a delta. `fork_thread` writes full snapshots, so a fork never depends on another thread's chain.",
+          text: "In the lab, the step-1 suspension checkpoint changed nothing, so its delta is an empty state with a `base`. After 32 deltas, or when a delta would be at least 80% the size of the full state, the backend writes a full snapshot. That keeps every resume to at most one full read plus 31 small ones. `put` always receives a full checkpoint and every read returns a full one, so callers never see a delta. `fork_thread` writes full snapshots, so a fork never depends on another thread's chain.",
         },
         {
           type: "p",
           text: "The benchmark for a 1000-step run over 1 MB of state went from 1.05 GB on disk to 33.0 MB, about 32 times fewer bytes, with wall time roughly flat. Deltas save disk, replication, and backup cost; they don't make a step faster.",
         },
-      ],
-    },
-    {
-      id: "trade-offs",
-      title: "Trade-offs",
-      blocks: [
         {
-          type: "rows",
-          rows: [
-            {
-              label: "Nodes re-run from the start.",
-              text: "Nothing is saved inside a node, so side effects a node performed before a crash happen again on resume. [4.4](/learn/crash-recovery) shows how durable tasks and idempotency keys handle that.",
-            },
-            {
-              label: "One writer per thread.",
-              text: "`JsonFileCheckpointer` serializes writes per thread inside one process. It assumes a single process writes to its directory.",
-            },
-            {
-              label: "Serialization still costs.",
-              text: "Copy-on-write removes clone cost, but writing a checkpoint still serializes the whole state, or the changed channels when deltas are on.",
-            },
-          ],
+          type: "note",
+          title: "One process per directory",
+          text: "`JsonFileCheckpointer` serializes writes per thread inside one process. It assumes a single process writes to its directory. For several server processes, use `PostgresCheckpointer`.",
         },
       ],
     },
-  ],
-  takeaways: [
-    "A checkpoint stores the thread, step, full state, and next nodes, and is written only at step boundaries.",
-    "`get_latest` means last stored, so a replayed timeline is the one a later resume continues.",
-    "Fork a thread before replaying it, so the original history stays as it was.",
-    "Deltas cut bytes on disk; copy-on-write channels cut the cost of snapshots in memory.",
   ],
   quiz: [
     {
       q: "The process dies while a node is halfway through. What does the resumed run do with that node?",
       a: "It runs the node again from its start, using the state and next nodes of the last checkpoint.",
-    },
-    {
-      q: "You replay a thread from step 2 on the same thread id. Which checkpoint does the next resume load?",
-      a: "The newest one written by the replay, because `get_latest` follows insertion order, not step number.",
     },
     {
       q: "Does code that reads checkpoints need to handle deltas?",
@@ -253,8 +276,6 @@ let outcome = executor
     { path: "rusty-core/src/executor.rs", what: "RunConfig::with_checkpoint_id, resume path" },
     { path: "docs/benchmarks.md", what: "Copy-on-write and delta checkpoint measurements" },
   ],
-  related: [
-    { label: "Example: human_in_loop.rs", href: "https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/examples/human_in_loop.rs" },
-    { label: "Book: Durability", href: "/guide/10-durability.html" },
-  ],
+  deeper: [{ book: "10-durability.html#level-one-the-checkpointed-run", label: "Durability: the checkpointed run" }],
+  related: [{ label: "3.2 Interrupts", href: "/learn/interrupts" }],
 };

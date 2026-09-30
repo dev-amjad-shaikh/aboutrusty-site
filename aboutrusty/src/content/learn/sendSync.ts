@@ -8,7 +8,7 @@ export const sendSync: Lesson = {
   source: "rusty-core/src/node.rs",
   before: ["2.3"],
   summary:
-    "Rusty runs the nodes of a super-step as tokio tasks, possibly on different threads, each with its own copy of the state. Two marker traits, Send and Sync, are what let the compiler check that this is safe before the program runs. This lesson shows where the bounds sit, what the error looks like when a node breaks them, and why a per-node copy of a large state costs a few nanoseconds.",
+    "Rusty runs the nodes of a super-step as tokio tasks, possibly on different threads, each with its own copy of the state. Two marker traits, Send and Sync, let the compiler check that this is safe before the program runs, and reference counting makes each node's copy of a large state cost a few nanoseconds.",
   glance: {
     learn: "Why Node is Send + Sync, and how State is shared without copying",
     try: "Stepping through the Arc structure of State across a super-step",
@@ -18,7 +18,8 @@ export const sendSync: Lesson = {
   sections: [
     {
       id: "problem",
-      title: "The problem",
+      title: "What parallel nodes need",
+      toc: "Requirements",
       blocks: [
         {
           type: "p",
@@ -32,7 +33,7 @@ export const sendSync: Lesson = {
     },
     {
       id: "traits",
-      title: "Send and Sync in one paragraph",
+      title: "Send and Sync",
       toc: "Send and Sync",
       blocks: [
         {
@@ -124,12 +125,12 @@ for (index, task) in active.iter().enumerate() {
       toc: "The compile error",
       blocks: [
         {
-          type: "p",
-          text: "Say a node closure captures an `Rc`:",
-        },
-        {
-          type: "code",
-          code: `use std::rc::Rc;
+          type: "lab",
+          title: "Capture an Rc in a node",
+          intro:
+            "Make a scratch crate that depends on `rusty-agent-runtime` and `serde_json`, and put this in `src/main.rs`. The node closure captures an `Rc`. Build it.",
+          commands: `cat > src/main.rs <<'EOF'
+use std::rc::Rc;
 
 use rusty_agent_runtime::prelude::*;
 use serde_json::json;
@@ -141,16 +142,10 @@ fn main() {
         let label = Rc::clone(&label);
         async move { Ok(NodeOutput::update("draft", json!(*label))) }
     });
-}`,
-        },
-        {
-          type: "p",
-          text: "rustc 1.97.1 rejects it with three errors: the closure isn't `Send`, the closure isn't `Sync`, and the future isn't `Send`. The first, trimmed:",
-        },
-        {
-          type: "code",
-          lang: "text",
-          code: `error[E0277]: \`Rc<std::string::String>\` cannot be sent between threads safely
+}
+EOF
+cargo build`,
+          output: `error[E0277]: \`Rc<std::string::String>\` cannot be sent between threads safely
    --> src/main.rs:9:31
     |
   9 |       builder.add_node("write", move |_ctx: NodeContext| {
@@ -165,24 +160,45 @@ fn main() {
     | |_____^ \`Rc<std::string::String>\` cannot be sent between threads safely
     |
     = help: within \`{closure@src/main.rs:9:31: 9:55}\`, the trait \`std::marker::Send\` is not implemented for \`Rc<std::string::String>\`
+…
 note: required by a bound in \`rusty_agent_runtime::graph::GraphBuilder::add_node\`
-   --> rusty-core/src/graph.rs:253:12
+   --> …/rusty-core/src/graph.rs:253:12
     |
 251 |     pub fn add_node<N>(&mut self, name: impl Into<String>, node: N) -> &mut Self
     |            -------- required by a bound in this associated function
 252 |     where
 253 |         N: Node + 'static,
-    |            ^^^^ required by this bound in \`GraphBuilder::add_node\``,
+    |            ^^^^ required by this bound in \`GraphBuilder::add_node\`
+
+error[E0277]: \`Rc<std::string::String>\` cannot be shared between threads safely
+…
+error: future cannot be sent between threads safely
+…
+error: could not compile \`sendsync\` (bin "sendsync") due to 3 previous errors`,
+          capturedAt: "fedbb3a · 2026-09-29 · rustc 1.97.1",
+          exercise: {
+            change: "Replace `std::rc::Rc` with `std::sync::Arc`, and `Rc::new` and `Rc::clone` with `Arc::new` and `Arc::clone`. Build again.",
+            predict: "Does it compile now, or does one of the three errors remain?",
+            result: "It compiles, with no warnings. `Arc<String>` is `Send + Sync` because its count is atomic and `String` is both, so the closure and its future satisfy every bound.",
+          },
         },
         {
           type: "p",
-          text: "Replace `Rc` with `Arc` (and `Rc::clone` with `Arc::clone`) and it compiles. The error arrives at the `add_node` call, where you wrote the node, not later when the executor spawns it and not at runtime as a data race.",
+          text: "Three errors: the closure isn't `Send`, the closure isn't `Sync`, and the future isn't `Send`. Each one points at the `add_node` call, where you wrote the node, and names the `N: Node + 'static` bound in `graph.rs`. You find out at compile time, before the executor ever spawns the node.",
+        },
+        {
+          type: "predict",
+          question: "Now the node counts its calls through `Arc<Cell<u32>>`, bumping it with `calls.set(calls.get() + 1)`. `Arc` is the thread-safe pointer. Does it compile?",
+          options: ["Yes: Arc makes anything shareable", "No: Cell isn't Sync, so Arc<Cell<u32>> isn't Send", "It compiles but panics when two invocations overlap"],
+          answer: 1,
+          explain:
+            "We built it: two errors, the first being that `Cell<u32>` cannot be shared between threads safely. `Arc<T>` is `Send` only when `T` is `Send + Sync`. rustc suggests `std::sync::RwLock` or `std::sync::atomic::AtomicU32` instead. `Arc` makes the count safe; what it points to still has to be.",
         },
       ],
     },
     {
       id: "state",
-      title: "A snapshot that costs a pointer",
+      title: "Sharing state across tasks",
       toc: "Arc-shared state",
       blocks: [
         {
@@ -279,7 +295,7 @@ state.insert_shared(channel, merged);`,
             },
             {
               label: "Durable merges still copy.",
-              text: "With a checkpointer attached, the previous checkpoint shares every channel, so each written channel is copied once at the merge. That cost is per written channel, not per state.",
+              text: "With a checkpointer attached, the previous checkpoint shares every channel, so each written channel is copied once at the merge. The cost grows with the number of written channels, whatever the size of the state.",
             },
             {
               label: "Long error messages.",
@@ -290,20 +306,10 @@ state.insert_shared(channel, merged);`,
       ],
     },
   ],
-  takeaways: [
-    "Node is Send + Sync so the executor can share it through Arc and run it from any tokio worker thread.",
-    "JoinSet::spawn requires a Send + 'static future; a node that captures an Rc fails at add_node, at compile time.",
-    "State is an Arc'd map of Arc'd values. Cloning it is one atomic increment, about 4 ns at any size.",
-    "Writes happen only at the barrier, and copy only the channels that are written and still shared.",
-  ],
   quiz: [
     {
-      q: "Why does Node need Sync, not only Send?",
+      q: "Why does Node need Sync as well as Send?",
       a: "The graph holds nodes as Arc<dyn Node>, which is only Send if the node is Send + Sync, and one node can run several times in a step, sharing &self across tasks.",
-    },
-    {
-      q: "A node closure captures Rc<Config>. When do you find out?",
-      a: "At compile time, on the add_node call: Rc isn't Send or Sync, so the closure doesn't satisfy the Node bound.",
     },
     {
       q: "Four nodes run on a 10 MB state. Roughly how much does giving each one a snapshot cost?",
@@ -321,8 +327,6 @@ state.insert_shared(channel, merged);`,
     { path: "rusty-core/src/graph.rs", what: "GraphBuilder::add_node" },
     { path: "docs/benchmarks.md", what: "State scaling, R0.7 wave 4 before/after" },
   ],
-  related: [
-    { label: "Lesson 2.3: The super-step loop", href: "/learn/super-step-loop" },
-    { label: "Example: parallel_fanout.rs", href: "https://github.com/dev-amjad-shaikh/rusty/blob/main/rusty-core/examples/parallel_fanout.rs" },
-  ],
+  deeper: [{ book: "02-mental-model.html#one-run-end-to-end", label: "The Rusty mental model: one run, end to end" }],
+  related: [{ label: "2.3 The super-step loop", href: "/learn/super-step-loop" }],
 };

@@ -2,109 +2,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router";
 import { getLesson, LEGACY_SLUGS } from "@/content/learn";
 import { CHAPTERS, PARTS } from "@/content/learn/course";
+import { RUSTY_BLOB, RUSTY_SHA, RUSTY_TREE } from "@/content/learn/source";
 import type { Block, Lesson } from "@/content/learn/types";
-import { lessonHref, lessonKind, lessonTitle } from "@/content/lessonLinks";
+import { lessonHref, lessonKind } from "@/content/lessonLinks";
+import { CodeExcerpt } from "./components/Code";
+import { Inline, SmartLink } from "./components/Inline";
+import { Lab } from "./components/Lab";
+import { Predict } from "./components/Predict";
+import { Prereqs } from "./components/Prereqs";
+import { PartCheck, RevealQA } from "./components/RevealQA";
 import { LESSON_DIAGRAMS } from "./diagrams";
 import { readDone, writeDone } from "./progress";
-
-const GH = "https://github.com/dev-amjad-shaikh/rusty/blob/main/";
-const CODE_INK = "#ffc7a6";
-
-/** A link that uses the router for site pages and a plain anchor for GitHub. */
-function SmartLink({ href, className, style, children }: { href: string; className?: string; style?: React.CSSProperties; children: ReactNode }) {
-  if (href.startsWith("/")) {
-    return (
-      <Link to={href} className={className} style={style}>
-        {children}
-      </Link>
-    );
-  }
-  const external = /^https?:\/\//.test(href);
-  return (
-    <a href={href} className={className} style={style} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
-      {children}
-    </a>
-  );
-}
-
-/** Inline `code`, **bold**, and [label](href) markers. */
-function Inline({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g);
-  return (
-    <>
-      {parts.map((seg, i) => {
-        if (seg.startsWith("**") && seg.endsWith("**") && seg.length > 4)
-          return (
-            <strong key={i} className="font-normal text-[#f7ece4]">
-              {seg.slice(2, -2)}
-            </strong>
-          );
-        if (seg.startsWith("`") && seg.endsWith("`") && seg.length > 2)
-          return (
-            <code key={i} className="break-words font-code text-[0.88em]" style={{ color: CODE_INK }}>
-              {seg.slice(1, -1)}
-            </code>
-          );
-        const m = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(seg);
-        if (m) return <SmartLink key={i} href={m[2]}>{m[1]}</SmartLink>;
-        return seg;
-      })}
-    </>
-  );
-}
-
-const RUST_KW =
-  /(\/\/.*$)|("(?:[^"\\]|\\.)*")|\b(let|mut|async|move|await|fn|pub|match|if|else|return|struct|impl|trait|for|in|use|Some|None|Ok|Err|Self|self|const|as|where|loop|while|true|false)\b|\b(\d[\d_]*(?:\.\d+)?)\b/gm;
-
-function highlight(code: string, lang: string): ReactNode[] {
-  if (lang === "text" || lang === "json") return [code];
-  const re = lang === "shell" ? /(#.*$)|('(?:[^'\\]|\\.)*')|\b(curl|cargo|cd)\b|(\$\w+)/gm : RUST_KW;
-  const out: ReactNode[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = re.exec(code))) {
-    if (m.index > last) out.push(code.slice(last, m.index));
-    const [tok, comment, str, kw, num] = m;
-    const color = comment ? "#8b837b" : str ? "#9fd4a8" : kw ? "#f0862b" : num ? "#f5b774" : undefined;
-    out.push(
-      <span key={k++} style={{ color }}>
-        {tok}
-      </span>,
-    );
-    last = m.index + tok.length;
-  }
-  if (last < code.length) out.push(code.slice(last));
-  return out;
-}
-
-function CodeExcerpt({ file, symbol, code, lang = "rust" }: { file?: string; symbol?: string; code: string; lang?: string }) {
-  return (
-    <div className="overflow-hidden rounded-xl border" style={{ borderColor: "rgba(236,150,96,.16)", background: "rgba(8,5,4,.75)" }}>
-      {(file || symbol) && (
-        <div
-          className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b px-3.5 py-2"
-          style={{ borderColor: "rgba(236,150,96,.10)", background: "rgba(255,236,214,.02)" }}
-        >
-          {file ? (
-            <a href={GH + file} target="_blank" rel="noreferrer" className="break-all font-code text-[11.5px] text-[#cbb3a2] hover:text-[#ffd0b3]">
-              {file}
-            </a>
-          ) : (
-            <span />
-          )}
-          {symbol && <span className="font-code text-[11.5px] text-[#6f675f]">{symbol}</span>}
-        </div>
-      )}
-      <pre
-        className="m-0 overflow-x-auto px-[18px] py-4 font-code text-[13px] leading-[1.7] text-[#ddd0c4]"
-        style={{ borderLeft: "2px solid rgba(240,134,43,.5)" }}
-      >
-        <code>{highlight(code, lang)}</code>
-      </pre>
-    </div>
-  );
-}
 
 const TONE: Record<string, string> = { green: "#9fd4a8", red: "#f09a80", amber: "#f5b774" };
 const P = "m-0 text-[17px] leading-[1.75] text-[#cfc3b8]";
@@ -172,6 +80,19 @@ function BlockView({ block }: { block: Block }) {
       const C = LESSON_DIAGRAMS[block.name];
       return C ? <C /> : null;
     }
+    case "predict":
+      return <Predict question={block.question} options={block.options} answer={block.answer} explain={block.explain} />;
+    case "lab":
+      return (
+        <Lab
+          title={block.title}
+          intro={block.intro}
+          commands={block.commands}
+          output={block.output}
+          capturedAt={block.capturedAt}
+          exercise={block.exercise}
+        />
+      );
   }
 }
 
@@ -195,8 +116,8 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
   const headerH = useHeaderHeight();
   const [read, setRead] = useState(0);
   const [sec, setSec] = useState(lesson.sections[0]?.id);
-  const [quiz, setQuiz] = useState<Record<number, boolean>>({});
-  const [done, setDone] = useState(() => readDone().includes(lesson.id));
+  const [doneIds, setDoneIds] = useState(readDone);
+  const done = doneIds.includes(lesson.id);
 
   const chapter = CHAPTERS.find((c) => c.id === lesson.id)!;
   const partIndex = chapter.part - 1;
@@ -204,7 +125,14 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
   const idx = CHAPTERS.findIndex((c) => c.id === lesson.id);
   const prev = CHAPTERS[idx - 1];
   const next = CHAPTERS[idx + 1];
-  const toc = [...lesson.sections.map((s) => ({ id: s.id, t: s.toc ?? s.title })), { id: "check", t: "Check yourself" }];
+  // The part check sits on the last chapter of the part that has its own lesson.
+  const lastLessonInPart = [...part.chapters].reverse().find((c) => c.lesson)?.id;
+  const showPartCheck = lastLessonInPart === lesson.id && !!part.recap?.length;
+  const toc = [
+    ...lesson.sections.map((s) => ({ id: s.id, t: s.toc ?? s.title })),
+    ...(lesson.quiz?.length ? [{ id: "check", t: "Check yourself" }] : []),
+    ...(showPartCheck ? [{ id: "part-check", t: `Part ${partIndex + 1} check` }] : []),
+  ];
 
   // Scroll to the anchor in the URL, or to the top when the lesson changes.
   useEffect(() => {
@@ -222,7 +150,7 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
     const onScroll = () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
       setRead(Math.round(Math.max(0, Math.min(1, window.scrollY / Math.max(1, h))) * 100));
-      let cur = toc[0].id;
+      let cur = toc[0]?.id;
       document.querySelectorAll<HTMLElement>("[data-sec]").forEach((el) => {
         if (el.getBoundingClientRect().top < 140) cur = el.id;
       });
@@ -263,8 +191,9 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
 
   const toggleDone = () => {
     const cur = readDone();
-    writeDone(done ? cur.filter((x) => x !== lesson.id) : [...new Set([...cur, lesson.id])]);
-    setDone(!done);
+    const nextIds = done ? cur.filter((x) => x !== lesson.id) : [...new Set([...cur, lesson.id])];
+    writeDone(nextIds);
+    setDoneIds(nextIds);
   };
 
   const chapterLink = (id: string, children: ReactNode, className: string, style?: React.CSSProperties) => (
@@ -361,28 +290,23 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
               <span>·</span>
               <span className="min-w-0 break-all">
                 Source:{" "}
-                <a href={GH + lesson.source} target="_blank" rel="noreferrer" className="font-code text-[13px]">
+                <a href={RUSTY_BLOB + lesson.source} target="_blank" rel="noreferrer" className="font-code text-[13px]">
                   {lesson.source}
                 </a>
               </span>
-            </div>
-            {lesson.before && (
-              <span className="text-[14.5px] text-[#a39a91]">
-                Before this:{" "}
-                {lesson.before.map((id, i) => (
-                  <span key={id}>
-                    {i > 0 && ", "}
-                    <SmartLink href={lessonHref(id)}>
-                      {id} {lessonTitle(id)}
-                    </SmartLink>
-                  </span>
-                ))}
+              <span>·</span>
+              <span>
+                Checked against{" "}
+                <a href={RUSTY_TREE} target="_blank" rel="noreferrer" className="font-code text-[13px]" title={`rusty at commit ${RUSTY_SHA}`}>
+                  rusty @ {RUSTY_SHA.slice(0, 7)}
+                </a>
               </span>
-            )}
+            </div>
+            {lesson.before?.length ? <Prereqs ids={lesson.before} done={doneIds} /> : null}
           </div>
 
           <p className="m-0 text-[19px] leading-[1.65] text-[#d8ccc0]" style={{ textWrap: "pretty" }}>
-            {lesson.summary}
+            <Inline text={lesson.summary} />
           </p>
 
           <div
@@ -402,7 +326,9 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
             ).map(([k, v]) => (
               <div key={k} className="flex flex-col gap-1.5 px-[18px] py-4" style={{ background: "#100b09" }}>
                 <span className="font-code text-[10.5px] uppercase tracking-[0.14em] text-[#cbb3a2]">{k}</span>
-                <span className="text-[15px] leading-[1.5] text-[#ece0d5]">{v}</span>
+                <span className="text-[15px] leading-[1.5] text-[#ece0d5]">
+                  <Inline text={v} />
+                </span>
               </div>
             ))}
           </div>
@@ -416,50 +342,57 @@ function LessonPage({ lesson }: { lesson: Lesson }) {
             </section>
           ))}
 
-          <div
-            className="flex flex-col gap-2.5 rounded-[14px] border px-6 py-[22px]"
-            style={{ borderColor: "rgba(240,134,43,.3)", background: "linear-gradient(160deg,rgba(240,134,43,.10),rgba(200,110,44,.02))" }}
-          >
-            <span className="text-[17px] font-normal text-[#f7ece4]">Key takeaways</span>
-            {lesson.takeaways.map((t) => (
-              <span key={t} className="text-[16px] leading-[1.6] text-[#d8ccc0]">
-                • <Inline text={t} />
-              </span>
-            ))}
-          </div>
-
-          <section id="check" data-sec="1" className="flex flex-col gap-3.5" style={{ scrollMarginTop: headerH + 24 }}>
-            <h2 className="m-0 text-[27px] font-normal tracking-[-0.01em] text-[#f7ece4]">Check your understanding</h2>
-            {lesson.quiz.map((q, i) => (
-              <div
-                key={i}
-                className="flex flex-col gap-2.5 rounded-xl border px-5 py-[18px]"
-                style={{ borderColor: "rgba(236,150,96,.16)", background: "rgba(255,236,214,.03)" }}
-              >
-                <span className="text-[16.5px] leading-[1.55] text-[#f7ece4]">
-                  {i + 1}. <Inline text={q.q} />
+          {lesson.takeaways?.length ? (
+            <div
+              className="flex flex-col gap-2.5 rounded-[14px] border px-6 py-[22px]"
+              style={{ borderColor: "rgba(240,134,43,.3)", background: "linear-gradient(160deg,rgba(240,134,43,.10),rgba(200,110,44,.02))" }}
+            >
+              <span className="text-[17px] font-normal text-[#f7ece4]">Key takeaways</span>
+              {lesson.takeaways.map((t) => (
+                <span key={t} className="text-[16px] leading-[1.6] text-[#d8ccc0]">
+                  • <Inline text={t} />
                 </span>
-                {quiz[i] && (
-                  <span className="text-[15.5px] leading-[1.6] text-[#9fd4a8]">
-                    <Inline text={q.a} />
-                  </span>
-                )}
-                <button
-                  onClick={() => setQuiz((x) => ({ ...x, [i]: !x[i] }))}
-                  className="cursor-pointer self-start border-0 bg-transparent p-0 text-[14.5px] text-[#f0862b]"
-                  aria-expanded={!!quiz[i]}
+              ))}
+            </div>
+          ) : null}
+
+          {lesson.quiz?.length ? (
+            <section id="check" data-sec="1" className="flex flex-col gap-3.5" style={{ scrollMarginTop: headerH + 24 }}>
+              <h2 className="m-0 text-[27px] font-normal tracking-[-0.01em] text-[#f7ece4]">Check your understanding</h2>
+              <RevealQA items={lesson.quiz} />
+            </section>
+          ) : null}
+
+          {showPartCheck && (
+            <section id="part-check" data-sec="1" className="flex flex-col gap-3.5" style={{ scrollMarginTop: headerH + 24 }}>
+              <h2 className="m-0 text-[27px] font-normal tracking-[-0.01em] text-[#f7ece4]">Part {partIndex + 1} check</h2>
+              <PartCheck n={partIndex + 1} />
+            </section>
+          )}
+
+          {lesson.deeper?.length ? (
+            <div className="flex flex-col gap-1 rounded-[14px] border px-[22px] py-5" style={{ borderColor: "rgba(236,150,96,.16)" }}>
+              <span className="pb-1.5 text-[17px] font-normal text-[#f7ece4]">Go deeper in the book</span>
+              {lesson.deeper.map((d) => (
+                <Link
+                  key={d.book}
+                  to={`/guide/${d.book}`}
+                  className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 text-[15.5px] text-[#ece0d5] no-underline transition-colors hover:bg-[rgba(240,134,43,.08)] hover:text-[#fff3ea]"
                 >
-                  {quiz[i] ? "Hide answer" : "Show answer"}
-                </button>
-              </div>
-            ))}
-          </section>
+                  <span className="min-w-0">
+                    <Inline text={d.label} />
+                  </span>
+                  <span className="shrink-0 font-code text-[11px] text-[#8b837b]">{d.book.split(/[.#]/)[0]} →</span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-3 rounded-[14px] border px-[22px] py-5" style={{ borderColor: "rgba(236,150,96,.16)" }}>
             <span className="text-[17px] font-normal text-[#f7ece4]">Source</span>
             {lesson.sources.map((s) => (
               <div key={s.path} className="flex flex-wrap gap-x-3 gap-y-0.5 text-[14.5px]">
-                <a href={GH + s.path} target="_blank" rel="noreferrer" className="break-all font-code text-[13.5px]">
+                <a href={RUSTY_BLOB + s.path} target="_blank" rel="noreferrer" className="break-all font-code text-[13.5px]">
                   {s.path}
                 </a>
                 <span className="text-[#a39a91]">{s.what}</span>

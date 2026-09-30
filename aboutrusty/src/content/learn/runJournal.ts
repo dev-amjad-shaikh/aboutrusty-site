@@ -8,7 +8,7 @@ export const runJournal: Lesson = {
   source: "rusty-core/src/journal.rs",
   before: ["2.3"],
   summary:
-    "Every run writes a journal: an append-only list of events covering each step, each node's input and output, each model and tool call, each routing decision and checkpoint. Events carry a sequence number, a causal parent, and a declared effect, and the journal chains a SHA-256 hash over all of them. This lesson covers what an event holds, how parents are assigned, and how the hash makes the record tamper-evident.",
+    "Every run writes a journal: an append-only list of events covering each step, each node's input and output, each model and tool call, each routing decision and checkpoint. Events carry a sequence number, a causal parent, and a declared effect, and the journal chains a SHA-256 hash over all of them, so an edited record is detectable.",
   glance: {
     learn: "What a RunEvent holds, and how seq, parent, and the head hash fit together",
     try: "Recording a run event by event, following parents, then editing an event",
@@ -17,23 +17,13 @@ export const runJournal: Lesson = {
   interactive: true,
   sections: [
     {
-      id: "problem",
-      title: "The problem",
-      blocks: [
-        {
-          type: "p",
-          text: "A log tells you what a process printed. To explain an agent run you need more: the exact order things happened in, which step caused which call, what each call received and returned, and some assurance the record wasn't changed afterwards. Timestamps can't give you order across parallel tasks, and a text log can be edited without a trace.",
-        },
-        {
-          type: "p",
-          text: "Rusty's journal is built to answer those questions. It is written by the executor as the run happens, and the same record drives replay, run comparison, and signed receipts.",
-        },
-      ],
-    },
-    {
       id: "event",
       title: "One event",
       blocks: [
+        {
+          type: "p",
+          text: "A log tells you what a process printed. To explain an agent run you need the exact order things happened in, which step caused which call, what each call received and returned, and some assurance the record wasn't changed afterwards. The executor writes a [[Run journal|run journal]] as the run happens, and the same record drives replay, run comparison, and signed receipts.",
+        },
         {
           type: "p",
           text: "The unit is a `RunEvent`. Trimmed to its fields:",
@@ -66,7 +56,7 @@ export const runJournal: Lesson = {
         },
         {
           type: "p",
-          text: "`effect` is one of five classes: `pure`, `read_only`, `idempotent`, `compensatable`, `non_idempotent`. It says what kind of side effect produced the event, which is what replay and retry policy read. Model and tool calls default to `non_idempotent`, because the runtime can't prove otherwise. [5.2 The effect taxonomy](/guide/12-policy-security.html) goes further.",
+          text: "`effect` is one of five [[Effect|classes]]: `pure`, `read_only`, `idempotent`, `compensatable`, `non_idempotent`. It says what kind of side effect produced the event, which is what replay and retry policy read. Model and tool calls default to `non_idempotent`, because the runtime can't prove otherwise. [5.2 The effect taxonomy](/guide/12-policy-security.html) goes further.",
         },
       ],
     },
@@ -92,7 +82,7 @@ export const runJournal: Lesson = {
         },
         {
           type: "p",
-          text: "The enum is much larger than that list. On main it has 68 variants, added as the platform grew: agent lifecycle and mailboxes, memory reads and writes, learning candidates, capsule calls, connections and credentials, artifacts, deployments, approvals, inbox intake, cancellation, and streamed assistant chunks. Each one is recorded through the same journal, so it gets the same ordering and hashing.",
+          text: "The enum is much larger than that list. At fedbb3a it has 68 variants, added as the platform grew: agent lifecycle and mailboxes, memory reads and writes, learning candidates, capsule calls, connections and credentials, artifacts, deployments, approvals, inbox intake, cancellation, and streamed assistant chunks. Each one is recorded through the same journal, so it gets the same ordering and hashing.",
         },
       ],
     },
@@ -103,7 +93,18 @@ export const runJournal: Lesson = {
       blocks: [
         {
           type: "p",
-          text: "`seq` tells you when; `parent` tells you why. The executor assigns parents with fixed rules:",
+          text: "`seq` tells you when; `parent` tells you why.",
+        },
+        {
+          type: "predict",
+          question: "The ReAct `agent` node calls the model. Which event becomes the `model_call`'s parent?",
+          options: ["The step's `super_step_start`", "The `agent` invocation's `node_input`", "Whatever event was recorded just before it"],
+          answer: 1,
+          explain: "A call is caused by the node invocation that made it, so it points at that invocation's `node_input`. Position in the sequence is `seq`'s job.",
+        },
+        {
+          type: "p",
+          text: "The executor assigns parents with fixed rules:",
         },
         {
           type: "list",
@@ -124,6 +125,59 @@ export const runJournal: Lesson = {
         {
           type: "p",
           text: "Order matters here too. Parallel nodes finish in any order, but their `node_output` events are recorded in active-set order after the barrier, so two recordings of the same run have the same sequence.",
+        },
+        {
+          type: "lab",
+          title: "Read a real journal",
+          intro:
+            "Start the demo server in open mode, run the `react_agent` graph once, and print one line per event: `seq`, kind, node, effect, and the `seq` of its parent. The demo's default model is a deterministic local model, so no key is needed.",
+          commands: `# terminal 1
+RUSTY_OPEN=1 cargo run -p rusty-agent-server --example server_demo
+
+# terminal 2
+REACT=$(curl -s -X POST localhost:8100/threads \\
+  -H 'content-type: application/json' -d '{"graph": "react_agent"}' | jq -r .thread_id)
+RUN_ID=$(curl -s -X POST localhost:8100/threads/$REACT/runs/wait \\
+  -H 'content-type: application/json' \\
+  -d '{"input": {"messages": [{"role": "user", "content": "say pong"}]}}' | jq -r .run_id)
+
+curl -s localhost:8100/runs/$RUN_ID/events \\
+  | jq -r '.events[] | "\\(.seq)\\t\\(.kind)\\t\\(.node_id // "-")\\t\\(.effect)\\tparent=\\(.parent // "-" | split(":") | last)"'`,
+          output: `0	run_config_declared	-	pure	parent=-
+1	super_step_start	-	pure	parent=-
+2	node_input	agent	pure	parent=1
+3	memory_read	-	read_only	parent=context_pipeline
+4	memory_read	-	read_only	parent=context_pipeline
+5	model_call	agent	non_idempotent	parent=2
+6	node_output	agent	pure	parent=2
+7	super_step_end	-	pure	parent=6
+8	routing_decision	-	pure	parent=7
+9	checkpoint_written	-	idempotent	parent=8
+10	super_step_start	-	pure	parent=8
+11	node_input	tools	pure	parent=10
+12	tool_call	tools	pure	parent=11
+13	tool_call	tools	pure	parent=11
+14	tool_call	tools	pure	parent=11
+15	tool_call	tools	read_only	parent=11
+16	tool_call	tools	read_only	parent=11
+17	node_output	tools	pure	parent=11
+18	super_step_end	-	pure	parent=17
+19	routing_decision	-	pure	parent=18
+20	checkpoint_written	-	idempotent	parent=19
+21	super_step_start	-	pure	parent=19
+22	node_input	agent	pure	parent=21
+23	memory_read	-	read_only	parent=context_pipeline
+24	memory_read	-	read_only	parent=context_pipeline
+25	model_call	agent	non_idempotent	parent=22
+26	node_output	agent	pure	parent=22
+27	super_step_end	-	pure	parent=26
+28	routing_decision	-	pure	parent=27
+29	checkpoint_written	-	idempotent	parent=28`,
+          capturedAt: "fedbb3a · 2026-09-29",
+        },
+        {
+          type: "p",
+          text: "Three super-steps: agent, tools, agent. Each follows the parent rules above. Two kinds come from outside the executor's list: `run_config_declared` at seq 0, and `memory_read` events recorded by the server's context pipeline, whose parent is the pipeline's own id `rusty:context_pipeline` (the `jq` filter prints the part after the last colon). The demo's tools declare `pure` and `read_only` effects, so their calls are recorded with those classes.",
         },
       ],
     },
@@ -155,6 +209,13 @@ export const runJournal: Lesson = {
 head_hash: String,`,
         },
         {
+          type: "predict",
+          question: "In a stored 30-event journal, someone edits the output of seq 9. Which head hashes change?",
+          options: ["Only the head after seq 9", "The heads after seq 9 and every later event", "All 30, including those before seq 9"],
+          answer: 1,
+          explain: "Each head folds in the previous head, so the edit changes H at seq 9 and every head after it. The heads before seq 9 don't depend on it.",
+        },
+        {
           type: "p",
           text: "`Journal::record` extends it on every append, over the event with its payload keys sorted, so the same content always hashes the same:",
         },
@@ -172,7 +233,7 @@ inner.events.push(event);`,
         },
         {
           type: "p",
-          text: "Changing, removing, or reordering any event changes every head after it. `Journal::from_snapshot` recomputes the chain from the events and refuses a snapshot whose stored head doesn't match. The test `snapshot_roundtrip_reverifies_head` flips one event's status and checks the load fails.",
+          text: "So changing, removing, or reordering any event changes every head after it. `Journal::from_snapshot` recomputes the chain from the events and refuses a snapshot whose stored head doesn't match. The test `snapshot_roundtrip_reverifies_head` flips one event's status and checks the load fails.",
         },
         {
           type: "p",
@@ -217,7 +278,7 @@ inner.events.push(event);`,
     },
     {
       id: "trade-offs",
-      title: "Trade-offs",
+      title: "Limits",
       blocks: [
         {
           type: "rows",
@@ -227,7 +288,7 @@ inner.events.push(event);`,
               text: "The core journal lives in memory. The server persists it at checkpoint boundaries and at the end of the run, so a crash can lose events recorded since the last boundary.",
             },
             {
-              label: "Tamper-evident, not tamper-proof.",
+              label: "Tamper-evident only.",
               text: "The chain detects an edited journal. Someone who rewrites every event and the stored head can produce a consistent fake. Signed receipts close that gap by signing the head.",
             },
             {
@@ -239,21 +300,10 @@ inner.events.push(event);`,
       ],
     },
   ],
-  takeaways: [
-    "Every run journals RunEvents: step boundaries, node inputs and outputs, routing, checkpoints, and model and tool calls.",
-    "seq is the total order, assigned by the journal; parent links each event to the one that caused it.",
-    "A SHA-256 head hash is chained over every event, and loading a snapshot re-verifies it.",
-    "Checkpoints store the head in journal_ref, binding saved state to its evidence.",
-    "GET /runs/{id}/events serves the journal, re-verified, with a complete flag.",
-  ],
   quiz: [
     {
       q: "Two parallel nodes record model calls at the same instant. What decides their order in the journal?",
-      a: "`seq`, which the journal assigns under its lock at record time. Timestamps are an attribute, not the order.",
-    },
-    {
-      q: "What is the causal parent of a `tool_call` made by the ReAct tools node?",
-      a: "The tools node's `node_input` event for that invocation, passed to the node under `rusty.parent_event`.",
+      a: "`seq`, which the journal assigns under its lock at record time. Timestamps are an attribute; they don't define the order.",
     },
     {
       q: "Someone edits the output of seq 9 in a stored journal. Where is that caught?",
@@ -271,8 +321,9 @@ inner.events.push(event);`,
     { path: "rusty-api/src/lib.rs", what: "Effect, the five effect classes" },
     { path: "rusty-server/src/routes.rs", what: "GET /runs/{run_id}/events and /payloads/{sha256}" },
   ],
-  related: [
-    { label: "5.3 Deterministic replay", href: "/learn/deterministic-replay" },
-    { label: "Book: Journals & evidence", href: "/guide/03-journals.html" },
+  deeper: [
+    { book: "03-journals.html#rusty-the-flight-recorder", label: "Journals & evidence: the Flight Recorder" },
+    { book: "03-journals.html#one-recorded-fact", label: "Journals & evidence: one recorded fact" },
   ],
+  related: [{ label: "5.3 Deterministic replay", href: "/learn/deterministic-replay" }],
 };

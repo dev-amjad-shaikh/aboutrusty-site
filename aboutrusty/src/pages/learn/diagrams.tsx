@@ -13,6 +13,10 @@ import { JournalExplorer } from "@/components/diagrams/lessons-a/JournalExplorer
 import { LeaseTimeline } from "@/components/diagrams/lessons-b/LeaseTimeline";
 import { CapsuleGrants } from "@/components/diagrams/lessons-b/CapsuleGrants";
 import { CowSnapshot } from "@/components/diagrams/lessons-b/CowSnapshot";
+import { FailureCompare } from "@/components/diagrams/lessons-c/FailureCompare";
+import { BspRounds } from "@/components/diagrams/lessons-c/BspRounds";
+import { SnapshotIsolation } from "@/components/diagrams/lessons-d/SnapshotIsolation";
+import { ReactCycle } from "@/components/diagrams/lessons-d/ReactCycle";
 
 /** Diagrams and interactives that lesson content can place by name. */
 export const LESSON_DIAGRAMS: Record<string, ComponentType> = {
@@ -33,4 +37,8 @@ export const LESSON_DIAGRAMS: Record<string, ComponentType> = {
   "lease-timeline": LeaseTimeline,
   "capsule-grants": CapsuleGrants,
   "cow-snapshot": CowSnapshot,
+  "failure-compare": FailureCompare,
+  "bsp-rounds": BspRounds,
+  "snapshot-isolation": SnapshotIsolation,
+  "react-cycle": ReactCycle,
 };

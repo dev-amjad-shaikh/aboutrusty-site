@@ -11,14 +11,32 @@ import { runJournal } from "./runJournal";
 import { leasesRetries } from "./leasesRetries";
 import { capsules } from "./capsules";
 import { sendSync } from "./sendSync";
+import { agentAtRuntime } from "./agentAtRuntime";
+import { howAgentsFail } from "./howAgentsFail";
+import { graphs } from "./graphs";
+import { pregel } from "./pregel";
+import { whereRustyComesFrom } from "./whereRustyComesFrom";
+import { fourPrimitives } from "./fourPrimitives";
+import { snapshotIsolation } from "./snapshotIsolation";
+import { reactAsAGraph } from "./reactAsAGraph";
+import { idempotentNodes } from "./idempotentNodes";
 
 /** Written lessons, in course order. */
 export const lessons: Lesson[] = [
+  agentAtRuntime,
+  howAgentsFail,
+  graphs,
+  pregel,
+  whereRustyComesFrom,
+  fourPrimitives,
   stateChannels,
   superStepLoop,
+  snapshotIsolation,
   routing,
+  reactAsAGraph,
   checkpoints,
   interrupts,
+  idempotentNodes,
   leasesRetries,
   crashRecovery,
   runJournal,
